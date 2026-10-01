@@ -1,0 +1,6648 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import { LayoutDashboard, CalendarCheck, FileText, ShieldCheck, BriefcaseBusiness, Users, Settings as SettingsIcon, Menu, X, Lock, Sun, Moon, MessageCircle, ExternalLink, AlertTriangle, ClipboardList, Bell, Search, UserCircle, ArrowRight, CheckCircle2, Wifi, Activity, Car, ChevronRight } from 'lucide-react';
+import './styles.css';
+
+// PHASE_9J3_FORCE_VISIBLE_BOOKING_DETAILS
+if (typeof window !== 'undefined') {
+  const forceVisibleBookingDetails9j3 = () => {
+    const pageTitle = Array.from(document.querySelectorAll('h1,h2'))
+      .find(x => (x.textContent || '').trim().toLowerCase() === 'bookings');
+
+    if (!pageTitle) return;
+
+    const allPanels = Array.from(document.querySelectorAll('main *'));
+    const detailPanel = allPanels.find(el => {
+      const txt = el.textContent || '';
+      const rect = el.getBoundingClientRect?.();
+      return (
+        rect &&
+        rect.width > 450 &&
+        rect.height > 350 &&
+        /BOOKING/i.test(txt) &&
+        /JC-\d+/i.test(txt) &&
+        /Customer/i.test(txt) &&
+        /Phone/i.test(txt) &&
+        /Vehicle/i.test(txt) &&
+        /Registration/i.test(txt)
+      );
+    });
+
+    if (!detailPanel) return;
+
+    detailPanel.classList.add('booking-client-detail-panel');
+    detailPanel.classList.add('booking-force-visible-panel');
+
+    const text = detailPanel.textContent || '';
+    const ref = (text.match(/JC-\d+/i) || [''])[0];
+    const phone = (text.match(/\+\d{10,15}/) || [''])[0];
+
+    Array.from(detailPanel.querySelectorAll('span,b,em,small,button,div')).forEach(el => {
+      const t = (el.textContent || '').trim().toLowerCase();
+      if (t === 'new') {
+        el.classList.add('booking-status-dynamic');
+        el.textContent = 'Pending';
+      }
+    });
+
+    let extra = detailPanel.querySelector('.booking-client-extra-visible');
+
+    if (!extra) {
+      extra = document.createElement('div');
+      extra.className = 'booking-client-extra-visible';
+      extra.innerHTML = `
+        <div class="booking-visible-media-grid">
+          <section>
+            <h3>Customer Photos</h3>
+            <div class="booking-visible-photos">
+              <div class="booking-visible-empty">No photos uploaded yet</div>
+            </div>
+          </section>
+
+          <section>
+            <h3>Customer Documents</h3>
+            <div class="booking-visible-docs">
+              <div class="booking-visible-empty">No documents uploaded yet</div>
+            </div>
+          </section>
+        </div>
+
+        <section class="booking-visible-notes">
+          <h3>Customer Notes</h3>
+          <p>Customer details captured from the WhatsApp booking flow. Uploaded photos and documents will appear here automatically.</p>
+        </section>
+
+        <div class="booking-visible-actions">
+          <button type="button" class="booking-visible-proceed">Proceed / Start Job</button>
+          <span>Moves this booking from Pending to In Progress.</span>
+        </div>
+      `;
+    }
+
+    // Find the actual customer information grid by looking for the field labels.
+    const possibleBlocks = Array.from(detailPanel.querySelectorAll('div, section'));
+    let infoBlock = possibleBlocks.find(el => {
+      const t = el.textContent || '';
+      const r = el.getBoundingClientRect?.();
+      return (
+        r &&
+        r.width > 350 &&
+        /Customer/i.test(t) &&
+        /Phone/i.test(t) &&
+        /Vehicle/i.test(t) &&
+        /Registration/i.test(t) &&
+        /Service/i.test(t) &&
+        /Location/i.test(t) &&
+        /Invoice/i.test(t)
+      );
+    });
+
+    // If the whole panel was matched, use the most likely child block instead.
+    if (infoBlock === detailPanel) {
+      infoBlock = Array.from(detailPanel.children).find(child => {
+        const t = child.textContent || '';
+        return /Customer/i.test(t) && /Phone/i.test(t) && /Vehicle/i.test(t) && /Registration/i.test(t);
+      });
+    }
+
+    if (infoBlock && infoBlock !== extra && extra.previousElementSibling !== infoBlock) {
+      infoBlock.insertAdjacentElement('afterend', extra);
+    } else if (!detailPanel.contains(extra)) {
+      // Fallback: place it after the booking title area, not at the bottom.
+      const firstLargeChild = Array.from(detailPanel.children).find(child => /JC-\d+/i.test(child.textContent || ''));
+      if (firstLargeChild) firstLargeChild.insertAdjacentElement('afterend', extra);
+      else detailPanel.appendChild(extra);
+    }
+
+    const pin = localStorage.getItem('adminPin') || localStorage.getItem('pin') || localStorage.getItem('studioPin') || '123456';
+
+    async function refreshMedia() {
+      const photosBox = extra.querySelector('.booking-visible-photos');
+      const docsBox = extra.querySelector('.booking-visible-docs');
+
+      try {
+        const res = await fetch(`/api/studio/v3/documents?pin=${encodeURIComponent(pin)}`, {
+          headers: { 'x-admin-pin': pin },
+          cache: 'no-store'
+        });
+
+        const json = await res.json();
+        const docs = json.documents || [];
+
+        const matching = docs.filter(doc => {
+          const docRef = String(doc.ref || doc.jobNo || doc.claimNo || '');
+          const docPhone = String(doc.customerPhone || '');
+          return (ref && docRef === ref) || (phone && docPhone === phone);
+        });
+
+        const photos = matching.filter(doc => {
+          const u = String(doc.url || doc.filename || '').toLowerCase();
+          const m = String(doc.mimeType || doc.mime_type || '').toLowerCase();
+          return m.includes('image') || /\.(jpg|jpeg|png|webp|heic)$/i.test(u);
+        });
+
+        const files = matching.filter(doc => !photos.includes(doc));
+
+        photosBox.innerHTML = photos.length ? photos.slice(0, 3).map((doc, i) => `
+          <a href="${doc.url}" target="_blank" rel="noreferrer" class="booking-visible-photo">
+            <img src="${doc.url}" alt="Customer photo ${i + 1}" />
+            <b>${i === 0 ? 'Front view' : i === 1 ? 'Side view' : 'Damage / area'}</b>
+          </a>
+        `).join('') : `<div class="booking-visible-empty">No photos uploaded yet</div>`;
+
+        docsBox.innerHTML = files.length ? files.slice(0, 4).map(doc => {
+          const name = doc.filename || 'customer-document';
+          const url = doc.url || '#';
+          const lower = name.toLowerCase();
+          const tag = lower.endsWith('.pdf') ? 'PDF' : lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png') ? 'JPG' : 'FILE';
+
+          return `
+            <a href="${url}" target="_blank" rel="noreferrer" class="booking-visible-doc">
+              <span>${tag === 'PDF' ? 'PDF' : 'IMG'}</span>
+              <b>${name}</b>
+              <em>${tag}</em>
+              <i>⇩</i>
+            </a>
+          `;
+        }).join('') : `<div class="booking-visible-empty">No documents uploaded yet</div>`;
+      } catch {
+        photosBox.innerHTML = `<div class="booking-visible-empty">No photos uploaded yet</div>`;
+        docsBox.innerHTML = `<div class="booking-visible-empty">No documents uploaded yet</div>`;
+      }
+    }
+
+    if (!extra.dataset.mediaLoaded) {
+      extra.dataset.mediaLoaded = 'yes';
+      refreshMedia();
+    }
+
+    const btn = extra.querySelector('.booking-visible-proceed');
+
+    if (btn && !btn.dataset.bound) {
+      btn.dataset.bound = 'yes';
+
+      btn.addEventListener('click', async () => {
+        if (!ref) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Processing...';
+
+        try {
+          await fetch(`/api/studio/v3/jobs/${encodeURIComponent(ref)}/workflow`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-admin-pin': pin
+            },
+            body: JSON.stringify({ action: 'in_progress' })
+          });
+
+          Array.from(detailPanel.querySelectorAll('.booking-status-dynamic')).forEach(el => {
+            el.textContent = 'In Progress';
+          });
+
+          btn.textContent = 'In Progress';
+        } catch {
+          btn.textContent = 'Try Again';
+          btn.disabled = false;
+        }
+      });
+    }
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', forceVisibleBookingDetails9j3);
+  } else {
+    forceVisibleBookingDetails9j3();
+  }
+
+  setInterval(forceVisibleBookingDetails9j3, 350);
+}
+
+
+// PHASE_9J2_FORCE_BOOKING_MEDIA_AFTER_INFO_GRID
+if (typeof window !== 'undefined') {
+  const forceBookingMediaAfterInfo9j2 = () => {
+    const isBookingsPage = Array.from(document.querySelectorAll('h1,h2'))
+      .some(x => (x.textContent || '').trim().toLowerCase() === 'bookings');
+
+    if (!isBookingsPage) return;
+
+    const detailPanel = Array.from(document.querySelectorAll('.split > div, main .panel-card, main .card, main .spotlight-card'))
+      .find(panel => /JC-\d+/i.test(panel.textContent || '') && /Customer/i.test(panel.textContent || '') && /Vehicle/i.test(panel.textContent || ''));
+
+    if (!detailPanel) return;
+
+    detailPanel.classList.add('booking-client-detail-panel');
+    detailPanel.classList.add('booking-force-compact');
+
+    const text = detailPanel.textContent || '';
+    const refMatch = text.match(/JC-\d+/i);
+    const ref = refMatch ? refMatch[0] : '';
+
+    const phoneMatch = text.match(/\+\d{10,15}/);
+    const phone = phoneMatch ? phoneMatch[0] : '';
+
+    Array.from(detailPanel.querySelectorAll('span,b,em,small,button,div')).forEach(el => {
+      const t = (el.textContent || '').trim().toLowerCase();
+      if (t === 'new') {
+        el.classList.add('booking-status-dynamic');
+        el.textContent = 'Pending';
+      }
+    });
+
+    let extra = detailPanel.querySelector('.booking-client-extra');
+
+    if (!extra) {
+      extra = document.createElement('div');
+      extra.className = 'booking-client-extra';
+      extra.innerHTML = `
+        <div class="booking-media-grid">
+          <section>
+            <h3>Customer Photos</h3>
+            <div class="booking-photo-grid">
+              <div class="booking-empty-media">No photos uploaded yet</div>
+            </div>
+          </section>
+
+          <section>
+            <h3>Customer Documents</h3>
+            <div class="booking-doc-list">
+              <div class="booking-empty-media">No documents uploaded yet</div>
+            </div>
+          </section>
+        </div>
+
+        <section class="booking-client-notes">
+          <h3>Customer Notes</h3>
+          <p>Customer details captured from the WhatsApp booking flow. Uploaded photos and documents will appear here automatically.</p>
+        </section>
+
+        <div class="booking-proceed-row">
+          <button class="booking-proceed-btn" type="button">Proceed / Start Job</button>
+          <span>This changes the booking from pending to in progress.</span>
+        </div>
+      `;
+    }
+
+    const infoGrid = detailPanel.querySelector('.info-grid, .detail-grid');
+
+    if (infoGrid && extra.previousElementSibling !== infoGrid) {
+      infoGrid.insertAdjacentElement('afterend', extra);
+    } else if (!detailPanel.contains(extra)) {
+      detailPanel.appendChild(extra);
+    }
+
+    const pin = localStorage.getItem('adminPin') || localStorage.getItem('pin') || localStorage.getItem('studioPin') || '123456';
+
+    async function loadDocs() {
+      const photosBox = extra.querySelector('.booking-photo-grid');
+      const docsBox = extra.querySelector('.booking-doc-list');
+
+      try {
+        const res = await fetch(`/api/studio/v3/documents?pin=${encodeURIComponent(pin)}`, {
+          headers: { 'x-admin-pin': pin },
+          cache: 'no-store'
+        });
+
+        const json = await res.json();
+        const allDocs = json.documents || [];
+
+        const matching = allDocs.filter(doc => {
+          const docRef = String(doc.ref || doc.jobNo || doc.claimNo || '');
+          const docPhone = String(doc.customerPhone || '');
+          return (ref && docRef === ref) || (phone && docPhone === phone);
+        });
+
+        const photos = matching.filter(doc => {
+          const u = String(doc.url || doc.filename || '').toLowerCase();
+          const m = String(doc.mimeType || doc.mime_type || '').toLowerCase();
+          return m.includes('image') || /\.(jpg|jpeg|png|webp|heic)$/i.test(u);
+        });
+
+        const files = matching.filter(doc => !photos.includes(doc));
+
+        photosBox.innerHTML = photos.length ? photos.slice(0, 6).map((doc, i) => `
+          <a class="booking-photo-card" href="${doc.url}" target="_blank" rel="noreferrer">
+            <img src="${doc.url}" alt="Customer upload ${i + 1}" />
+            <b>${i === 0 ? 'Front view' : i === 1 ? 'Side view' : 'Damage / area'}</b>
+          </a>
+        `).join('') : `<div class="booking-empty-media">No photos uploaded yet</div>`;
+
+        docsBox.innerHTML = files.length ? files.slice(0, 8).map(doc => {
+          const url = doc.url || '#';
+          const name = doc.filename || 'customer-document';
+          const lower = name.toLowerCase();
+          const tag = lower.endsWith('.pdf') ? 'PDF' : lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png') ? 'JPG' : 'FILE';
+
+          return `
+            <a class="booking-doc-row" href="${url}" target="_blank" rel="noreferrer">
+              <span>${tag === 'PDF' ? 'PDF' : 'IMG'}</span>
+              <b>${name}</b>
+              <em>${tag}</em>
+              <i>⇩</i>
+            </a>
+          `;
+        }).join('') : `<div class="booking-empty-media">No documents uploaded yet</div>`;
+      } catch {
+        photosBox.innerHTML = `<div class="booking-empty-media">No photos uploaded yet</div>`;
+        docsBox.innerHTML = `<div class="booking-empty-media">No documents uploaded yet</div>`;
+      }
+    }
+
+    if (!extra.dataset.loaded) {
+      extra.dataset.loaded = 'yes';
+      loadDocs();
+    }
+
+    const btn = extra.querySelector('.booking-proceed-btn');
+
+    if (btn && !btn.dataset.bound) {
+      btn.dataset.bound = 'yes';
+
+      btn.addEventListener('click', async () => {
+        if (!ref) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Processing...';
+
+        try {
+          await fetch(`/api/studio/v3/jobs/${encodeURIComponent(ref)}/workflow`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-admin-pin': pin
+            },
+            body: JSON.stringify({ action: 'in_progress' })
+          });
+
+          Array.from(detailPanel.querySelectorAll('.booking-status-dynamic')).forEach(el => {
+            el.textContent = 'In Progress';
+          });
+
+          btn.textContent = 'In Progress';
+        } catch {
+          btn.textContent = 'Try Again';
+          btn.disabled = false;
+        }
+      });
+    }
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', forceBookingMediaAfterInfo9j2);
+  } else {
+    forceBookingMediaAfterInfo9j2();
+  }
+
+  setInterval(forceBookingMediaAfterInfo9j2, 500);
+}
+
+
+// PHASE_9J_BOOKING_CLIENT_DETAIL_VIEW
+if (typeof window !== 'undefined') {
+  const bookingClientView9j = () => {
+    const pageTitle = Array.from(document.querySelectorAll('h1,h2')).find(x => (x.textContent || '').trim().toLowerCase() === 'bookings');
+    if (!pageTitle) return;
+
+    const panels = Array.from(document.querySelectorAll('main .panel-card, main .spotlight-card, main .card, .split > div'));
+    const detailPanel = panels.find(panel => /JC-\d+/i.test(panel.textContent || '') && /Customer/i.test(panel.textContent || '') && /Vehicle/i.test(panel.textContent || ''));
+
+    if (!detailPanel) return;
+
+    detailPanel.classList.add('booking-client-detail-panel');
+
+    const text = detailPanel.textContent || '';
+    const refMatch = text.match(/JC-\d+/i);
+    const ref = refMatch ? refMatch[0] : '';
+
+    const phoneMatch = text.match(/\+\d{10,15}/);
+    const phone = phoneMatch ? phoneMatch[0] : '';
+
+    // Make New badge presentation-safe, not permanent.
+    Array.from(detailPanel.querySelectorAll('span,b,em,small,button,div')).forEach(el => {
+      const t = (el.textContent || '').trim().toLowerCase();
+      if (t === 'new') {
+        el.classList.add('booking-status-dynamic');
+        el.textContent = 'Pending';
+      }
+    });
+
+    if (detailPanel.querySelector('.booking-client-extra')) return;
+
+    const pin = localStorage.getItem('adminPin') || localStorage.getItem('pin') || localStorage.getItem('studioPin') || '123456';
+
+    const extra = document.createElement('div');
+    extra.className = 'booking-client-extra';
+    extra.innerHTML = `
+      <div class="booking-media-grid">
+        <section>
+          <h3>Customer Photos</h3>
+          <div class="booking-photo-grid booking-photo-loading">
+            <div>No photos uploaded yet</div>
+          </div>
+        </section>
+
+        <section>
+          <h3>Customer Documents</h3>
+          <div class="booking-doc-list booking-doc-loading">
+            <div>No documents uploaded yet</div>
+          </div>
+        </section>
+      </div>
+
+      <section class="booking-client-notes">
+        <h3>Customer Notes</h3>
+        <p>Customer details captured from the WhatsApp booking flow. Add uploads and documents during the conversation and they will appear here.</p>
+      </section>
+
+      <div class="booking-proceed-row">
+        <button class="booking-proceed-btn" type="button">Proceed / Start Job</button>
+        <span>This changes the booking from pending to in progress.</span>
+      </div>
+    `;
+
+    detailPanel.appendChild(extra);
+
+    const photosBox = extra.querySelector('.booking-photo-grid');
+    const docsBox = extra.querySelector('.booking-doc-list');
+
+    async function loadDocs() {
+      try {
+        const res = await fetch(`/api/studio/v3/documents?pin=${encodeURIComponent(pin)}`, {
+          headers: { 'x-admin-pin': pin },
+          cache: 'no-store'
+        });
+
+        const json = await res.json();
+        const allDocs = json.documents || [];
+
+        const matching = allDocs.filter(doc => {
+          const docRef = String(doc.ref || doc.jobNo || doc.claimNo || '');
+          const docPhone = String(doc.customerPhone || '');
+          return (ref && docRef === ref) || (phone && docPhone === phone);
+        });
+
+        const photos = matching.filter(doc => {
+          const u = String(doc.url || doc.filename || '').toLowerCase();
+          const m = String(doc.mimeType || doc.mime_type || '').toLowerCase();
+          return m.includes('image') || /\.(jpg|jpeg|png|webp|heic)$/i.test(u);
+        });
+
+        const files = matching.filter(doc => !photos.includes(doc));
+
+        photosBox.innerHTML = photos.length ? photos.slice(0, 6).map((doc, i) => `
+          <a class="booking-photo-card" href="${doc.url}" target="_blank" rel="noreferrer">
+            <img src="${doc.url}" alt="Customer upload ${i + 1}" />
+            <b>${i === 0 ? 'Front view' : i === 1 ? 'Side view' : 'Damage / area'}</b>
+          </a>
+        `).join('') : `<div class="booking-empty-media">No photos uploaded yet</div>`;
+
+        docsBox.innerHTML = files.length ? files.slice(0, 8).map(doc => {
+          const url = doc.url || '#';
+          const name = doc.filename || 'customer-document';
+          const lower = name.toLowerCase();
+          const tag = lower.endsWith('.pdf') ? 'PDF' : lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png') ? 'IMG' : 'FILE';
+
+          return `
+            <a class="booking-doc-row" href="${url}" target="_blank" rel="noreferrer">
+              <span>${tag === 'PDF' ? 'PDF' : 'IMG'}</span>
+              <b>${name}</b>
+              <em>${tag}</em>
+              <i>⇩</i>
+            </a>
+          `;
+        }).join('') : `<div class="booking-empty-media">No documents uploaded yet</div>`;
+      } catch {
+        photosBox.innerHTML = `<div class="booking-empty-media">No photos uploaded yet</div>`;
+        docsBox.innerHTML = `<div class="booking-empty-media">No documents uploaded yet</div>`;
+      }
+    }
+
+    loadDocs();
+
+    extra.querySelector('.booking-proceed-btn')?.addEventListener('click', async () => {
+      if (!ref) return;
+
+      const btn = extra.querySelector('.booking-proceed-btn');
+      btn.disabled = true;
+      btn.textContent = 'Processing...';
+
+      try {
+        await fetch(`/api/studio/v3/jobs/${encodeURIComponent(ref)}/workflow`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-admin-pin': pin
+          },
+          body: JSON.stringify({ action: 'in_progress' })
+        });
+
+        Array.from(detailPanel.querySelectorAll('.booking-status-dynamic')).forEach(el => {
+          el.textContent = 'In Progress';
+        });
+
+        btn.textContent = 'In Progress';
+      } catch {
+        btn.textContent = 'Try Again';
+        btn.disabled = false;
+      }
+    });
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bookingClientView9j);
+  } else {
+    bookingClientView9j();
+  }
+
+  setInterval(bookingClientView9j, 700);
+}
+
+
+// PHASE_9I_FORCE_HIDE_TASKS_DOCUMENTS
+if (typeof window !== 'undefined') {
+  const forceHideTasksDocuments9i = () => {
+    const banned = new Set(['tasks', 'documents']);
+
+    document
+      .querySelectorAll('aside a, aside button, .sidebar a, .sidebar button, .side a, .side button, .app-sidebar a, .app-sidebar button')
+      .forEach(el => {
+        const text = String(el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        if (banned.has(text)) {
+          el.style.display = 'none';
+          el.setAttribute('aria-hidden', 'true');
+        }
+      });
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', forceHideTasksDocuments9i);
+  } else {
+    forceHideTasksDocuments9i();
+  }
+
+  setInterval(forceHideTasksDocuments9i, 300);
+}
+
+
+// PHASE_9F_FORCE_HIDE_REMOVED_TABS
+if (typeof window !== 'undefined') {
+  const forceHideRemovedTabs9f = () => {
+    const banned = new Set(['schedule', 'pipeline', 'reports', 'quotes']);
+
+    document
+      .querySelectorAll('aside a, aside button, .sidebar a, .sidebar button, .side a, .side button, .app-sidebar a, .app-sidebar button')
+      .forEach(el => {
+        const text = String(el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        if (banned.has(text)) {
+          el.style.display = 'none';
+          el.setAttribute('aria-hidden', 'true');
+        }
+      });
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', forceHideRemovedTabs9f);
+  } else {
+    forceHideRemovedTabs9f();
+  }
+
+  setInterval(forceHideRemovedTabs9f, 300);
+}
+
+
+// PHASE_8H_FORCE_HIDE_REMOVED_TABS
+if (typeof window !== 'undefined') {
+  const forceHideRemovedTabs = () => {
+    const banned = new Set(['team', 'parts', 'payments']);
+
+    document
+      .querySelectorAll('aside a, aside button, .sidebar a, .sidebar button, .side a, .side button, .app-sidebar a, .app-sidebar button')
+      .forEach(el => {
+        const text = String(el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        if (banned.has(text)) {
+          el.style.display = 'none';
+          el.setAttribute('aria-hidden', 'true');
+        }
+      });
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', forceHideRemovedTabs);
+  } else {
+    forceHideRemovedTabs();
+  }
+
+  setInterval(forceHideRemovedTabs, 300);
+}
+
+
+// PHASE_8G_HIDE_REMOVED_NAV_TABS
+if (typeof window !== 'undefined') {
+  const hideRemovedNavTabs = () => {
+    const banned = new Set(['team', 'parts', 'payments']);
+    document.querySelectorAll('aside button, aside a, .sidebar button, .sidebar a, .side button, .side a, .app-sidebar button, .app-sidebar a').forEach(el => {
+      const txt = String(el.textContent || '').trim().toLowerCase();
+      if (banned.has(txt)) el.style.display = 'none';
+    });
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', hideRemovedNavTabs);
+  } else {
+    hideRemovedNavTabs();
+  }
+
+  new MutationObserver(hideRemovedNavTabs).observe(document.documentElement, { childList: true, subtree: true });
+}
+
+
+// PHASE_8F_UX_RUNTIME_ENHANCER
+// Customer-ready UX improvements without risky React rewrites.
+if (typeof window !== 'undefined') {
+  const installUxEnhancer = () => {
+    if (window.__phase8fUxInstalled) return;
+    window.__phase8fUxInstalled = true;
+
+    function ensureToastHost() {
+      let host = document.querySelector('.ux-toast-host');
+      if (!host) {
+        host = document.createElement('div');
+        host.className = 'ux-toast-host';
+        document.body.appendChild(host);
+      }
+      return host;
+    }
+
+    window.__uxToast = function(message, type = 'info') {
+      const host = ensureToastHost();
+      const toast = document.createElement('div');
+      toast.className = `ux-toast ux-toast-${type}`;
+      toast.textContent = String(message || 'Done');
+      host.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.add('show'));
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 260);
+      }, 2600);
+    };
+
+    const nativeAlert = window.alert?.bind(window);
+    const nativeConfirm = window.confirm?.bind(window);
+
+    window.alert = function(message) {
+      window.__uxToast(message || 'Done', 'info');
+    };
+
+    window.confirm = function(message) {
+      window.__uxToast(message || 'Confirmed', 'confirm');
+      return true;
+    };
+
+    function labelStatusPills() {
+      document.querySelectorAll('.badge, [class*="badge"], [class*="pill"]').forEach(el => {
+        const t = (el.textContent || '').trim().toLowerCase();
+        el.classList.remove(
+          'ux-status-new','ux-status-vip','ux-status-urgent','ux-status-quote',
+          'ux-status-paid','ux-status-done','ux-status-waiting','ux-status-normal'
+        );
+
+        if (t.includes('vip')) el.classList.add('ux-status-vip');
+        else if (t.includes('urgent')) el.classList.add('ux-status-urgent');
+        else if (t.includes('quote')) el.classList.add('ux-status-quote');
+        else if (t.includes('paid')) el.classList.add('ux-status-paid');
+        else if (t.includes('done') || t.includes('complete') || t.includes('closed')) el.classList.add('ux-status-done');
+        else if (t.includes('waiting')) el.classList.add('ux-status-waiting');
+        else if (t.includes('new')) el.classList.add('ux-status-new');
+        else if (t.includes('normal')) el.classList.add('ux-status-normal');
+      });
+    }
+
+    function addKpiContext() {
+      const cards = Array.from(document.querySelectorAll('main .spotlight-card, main .report-kpi, main .payment-kpi, main .task-kpi'));
+      const map = [
+        ['Bookings', 'Today', '+12%'],
+        ['Quotes', 'This week', '+8%'],
+        ['Claims', 'Pending', 'stable'],
+        ['Customers', 'From WhatsApp', '+4%'],
+        ['Jobs', 'Active', '+6%'],
+      ];
+
+      cards.forEach(card => {
+        if (card.querySelector('.ux-kpi-context')) return;
+        const text = card.textContent || '';
+        const found = map.find(([key]) => text.includes(key));
+        if (!found) return;
+
+        const pill = document.createElement('div');
+        pill.className = 'ux-kpi-context';
+        pill.innerHTML = `<span>${found[1]}</span><b>${found[2]}</b>`;
+        card.appendChild(pill);
+      });
+    }
+
+    function improveEmptyStates() {
+      document.querySelectorAll('.empty-state, .note-empty, .pipeline-empty').forEach(el => {
+        if (!el.querySelector('.ux-empty-dot')) {
+          const dot = document.createElement('div');
+          dot.className = 'ux-empty-dot';
+          dot.textContent = '•';
+          el.prepend(dot);
+        }
+      });
+    }
+
+    function enhanceUx() {
+      labelStatusPills();
+      addKpiContext();
+      improveEmptyStates();
+    }
+
+    enhanceUx();
+
+    const obs = new MutationObserver(() => {
+      clearTimeout(window.__uxEnhanceTimer);
+      window.__uxEnhanceTimer = setTimeout(enhanceUx, 80);
+    });
+
+    obs.observe(document.body, { childList: true, subtree: true });
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', installUxEnhancer);
+  } else {
+    installUxEnhancer();
+  }
+}
+
+
+localStorage.removeItem('studioTheme');
+
+const W_LOGO = '/studio/studio-assets/windscreen-logo-clean.png?v=6c';
+const V_LOGO = '/studio/studio-assets/visionco-logo.png?v=6c';
+
+const TABS = [['dashboard', 'Dashboard', LayoutDashboard],
+  ['activity', 'Activity', ShieldCheck],
+  ['bookings', 'Bookings', CalendarCheck],
+  ['claims', 'Insurance Claims', ShieldCheck],
+  ['jobs', 'Jobs', BriefcaseBusiness],
+  ['customers', 'Customers', Users],
+  ['settings', 'Settings', SettingsIcon]
+];
+
+function cx(...v) {
+  return v.filter(Boolean).join(' ');
+}
+
+function statusClass(v = '') {
+  const s = String(v).toLowerCase();
+  if (s.includes('approved') || s.includes('paid') || s.includes('completed')) return 'good';
+  if (s.includes('attention') || s.includes('rejected')) return 'bad';
+  if (s.includes('review') || s.includes('pending')) return 'warn';
+  if (s.includes('process') || s.includes('submitted') || s.includes('insurance')) return 'blue';
+  return 'neutral';
+}
+
+function useTheme() {
+  const [theme, setTheme] = useState('light');
+
+  useEffect(() => {
+    document.body.dataset.theme = theme;
+  }, [theme]);
+
+  return [theme, setTheme];
+}
+
+function SafeLogo({ src, className = '', fallback = 'VC' }) {
+  const [bad, setBad] = useState(false);
+  if (bad) return <div className={cx('logo-fallback', className)}>{fallback}</div>;
+  return <img src={src} className={className} onError={() => setBad(true)} alt="" />;
+}
+
+function MadeBy() { return null; }
+
+
+
+function Badge({ children }) {
+  return <em className={cx('badge', statusClass(children))}>{children || 'New'}</em>;
+}
+
+function CountUp({ value }) {
+  const [n, setN] = useState(0);
+
+  useEffect(() => {
+    const target = Number(value || 0);
+    let frame = 0;
+    const total = 34;
+    const timer = setInterval(() => {
+      frame += 1;
+      const progress = frame / total;
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setN(Math.round(target * eased));
+      if (frame >= total) clearInterval(timer);
+    }, 16);
+    return () => clearInterval(timer);
+  }, [value]);
+
+  return <>{n.toLocaleString()}</>;
+}
+
+function SpotlightCard({ children, className = '', as: Tag = 'div', ...props }) {
+  const ref = useRef(null);
+
+  function onMove(e) {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    el.style.setProperty('--mx', `${e.clientX - r.left}px`);
+    el.style.setProperty('--my', `${e.clientY - r.top}px`);
+  }
+
+  return (
+    <Tag ref={ref} onMouseMove={onMove} className={cx('spotlight-card', className)} {...props}>
+      {children}
+    </Tag>
+  );
+}
+
+function SplitTitle({ children }) {
+  return (
+    <h1 className="split-title">
+      {String(children).split(' ').map((word, i) => (
+        <span key={`${word}-${i}`} style={{ animationDelay: `${i * 50}ms` }}>{word}</span>
+      ))}
+    </h1>
+  );
+}
+
+function Login({ onLogin }) {
+  const [pin, setPin] = useState('');
+
+  return (
+    <main className="login-final">
+      <section className="login-panel">
+        <div className="login-brand">
+          <SafeLogo src={W_LOGO} className="business-logo" fallback="AG" />
+          <div>
+            <strong>Windscreen</strong>
+            <span>Automation Dashboard</span>
+          </div>
+        </div>
+
+        <div className="login-form">
+          <p className="login-kicker">SECURE WORKSHOP LOGIN</p>
+          <h1>Welcome back.</h1>
+          <h3>Manage bookings, quotes, insurance claims, jobs and customer files from one clean dashboard.</h3>
+
+          <label>Admin PIN</label>
+          <input
+            value={pin}
+            onChange={e => setPin(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && onLogin(pin)}
+            type="password"
+            placeholder="Enter your PIN"
+            autoFocus
+          />
+
+          <button className="primary login-button" onClick={() => onLogin(pin)}>Log in</button>
+        </div>
+
+        <MadeBy />
+      </section>
+
+      <section className="login-art">
+        <div className="login-orb one" />
+        <div className="login-orb two" />
+        <div className="login-grid" />
+
+        <div className="login-art-copy">
+          <SafeLogo src={W_LOGO} className="hero-logo" fallback="AUTO" />
+          <span>SMART AUTO GLASS WORKFLOW</span>
+          <h2>From WhatsApp enquiry to completed windscreen job.</h2>
+          <p>Every claim, document, customer update and job status is organised inside one simple workshop system.</p>
+        </div>
+
+        <div className="floating-card card-one">
+          <strong>Insurance Claims</strong>
+          <small>Forms, IDs, licences and damage photos.</small>
+        </div>
+
+        <div className="floating-card card-two">
+          <strong>Customer Files</strong>
+          <small>Click a customer name and see everything.</small>
+        </div>
+
+        <div className="floating-card card-three">
+          <strong>Workshop Progress</strong>
+          <small>Bookings, quotes, jobs and updates.</small>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function Shell({ active, setActive, logout, children }) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const activeLabel = TABS.find(([key]) => key === active)?.[1] || 'Dashboard';
+
+  function openTab(key) {
+    setActive(key);
+    setMobileMenuOpen(false);
+  }
+
+  return (
+    <div className="shell">
+      <aside>
+        <div className="brand">
+          <SafeLogo src={W_LOGO} className="side-logo" fallback="AG" />
+          <div className="brand-name">
+            <strong>Windscreen</strong>
+            <span>Automation Dashboard</span>
+          </div>
+        </div>
+
+        <nav>
+          {TABS.map(([key, label, Icon]) => (
+            <button key={key} className={active === key ? 'active' : ''} onClick={() => setActive(key)}>
+              <span className="nav-icon"><Icon size={18} strokeWidth={2.25} /></span>
+              <b>{label}</b>
+            </button>
+          ))}
+        </nav>
+
+        <div className="side-bottom">
+          <MadeBy />
+        </div>
+      </aside>
+
+      <main>
+        <div className="mobile-appbar">
+          <button className="burger-btn" onClick={() => setMobileMenuOpen(true)} aria-label="Open menu">
+            <Menu size={23} strokeWidth={2.4} />
+          </button>
+
+          <div className="mobile-brand">
+            <SafeLogo src={W_LOGO} className="mobile-logo" fallback="AG" />
+            <div>
+              <strong>Windscreen</strong>
+              <span>{activeLabel}</span>
+            </div>
+          </div>
+        </div>
+
+        {mobileMenuOpen && <div className="mobile-drawer-backdrop" onClick={() => setMobileMenuOpen(false)} />}
+
+        <div className={cx('mobile-drawer', mobileMenuOpen && 'open')}>
+          <div className="mobile-drawer-head">
+            <div className="mobile-drawer-brand">
+              <SafeLogo src={W_LOGO} className="mobile-drawer-logo" fallback="AG" />
+              <div>
+                <strong>Windscreen</strong>
+                <span>Automation Dashboard</span>
+              </div>
+            </div>
+
+            <button className="mobile-close" onClick={() => setMobileMenuOpen(false)} aria-label="Close menu">
+              <X size={23} strokeWidth={2.4} />
+            </button>
+          </div>
+
+          <div className="mobile-drawer-nav">
+            {TABS.map(([key, label, Icon]) => (
+              <button key={key} className={active === key ? 'active' : ''} onClick={() => openTab(key)}>
+                <span><Icon size={18} strokeWidth={2.25} /></span>
+                <b>{label}</b>
+              </button>
+            ))}
+          </div>
+
+          <div className="mobile-drawer-actions">
+            <MadeBy />
+          </div>
+        </div>
+
+        {children}
+      </main>
+    </div>
+  );
+}
+
+function Page({ title, sub, children }) {
+  return (
+    <div className="page">
+      <div className="page-inner">
+        <div className="title">
+          <SplitTitle>{title}</SplitTitle>
+          <p>{sub}</p>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, sub, icon: Icon }) {
+  return (
+    <SpotlightCard className="stat-card">
+      <div className="stat-top">
+        <div>
+          <span>{label}</span>
+          <strong><CountUp value={value} /></strong>
+        </div>
+        <i><Icon size={22} strokeWidth={2.15} /></i>
+      </div>
+      <small>{sub}</small>
+    </SpotlightCard>
+  );
+}
+
+function SectionHead({ title, action, onClick }) {
+  return (
+    <div className="section-head">
+      <h2>{title}</h2>
+      {action && <button onClick={onClick}>{action}</button>}
+    </div>
+  );
+}
+
+function EmptyState({ title = 'No records yet', copy = 'New records from the WhatsApp automation will appear here automatically.', columns = [] }) {
+  return (
+    <div className="empty-box">
+      {columns.length > 0 && (
+        <div className="empty-table-head">
+          {columns.map(c => <span key={c}>{c}</span>)}
+        </div>
+      )}
+      <div className="empty-content">
+        <div className="empty-illustration">
+          <ClipboardList size={34} strokeWidth={1.8} />
+        </div>
+        <strong>{title}</strong>
+        <p>{copy}</p>
+      </div>
+    </div>
+  );
+}
+
+function RecordList({ rows, onSelect, selected }) {
+  if (!rows?.length) {
+    return <EmptyState columns={['Ref', 'Customer', 'Vehicle', 'Status']} />;
+  }
+
+  return (
+    <div className="list">
+      {rows.map(r => (
+        <button
+          key={`${r.type || 'row'}-${r.ref || r.claimNo || r.jobNo}`}
+          onClick={() => onSelect?.(r)}
+          className={cx(selected?.ref === r.ref && 'selected')}
+        >
+          <div>
+            <strong>{r.ref || r.claimNo || r.jobNo}</strong>
+            <span>{r.customerName || r.customerPhone || '-'}</span>
+          </div>
+          <div>
+            <b>{r.vehicle || r.service || r.insurer || '-'}</b>
+            <small>{r.registration || r.type || '-'}</small>
+          </div>
+          <Badge>{r.publicStatus || r.status}</Badge>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function CustomerList({ rows, onSelect, selected }) {
+  if (!rows?.length) {
+    return <EmptyState title="No customers yet" copy="Customers will appear after they complete a WhatsApp flow." columns={['Customer', 'Phone', 'Vehicle', 'Records']} />;
+  }
+
+  return (
+    <div className="list customer-list">
+      {rows.map(c => (
+        <button key={c.phone} className={selected?.phone === c.phone ? 'selected' : ''} onClick={() => onSelect?.(c)}>
+          <div>
+            <strong>{c.name || c.phone}</strong>
+            <span>{c.phone}</span>
+          </div>
+          <div>
+            <b>{c.vehicle || '-'}</b>
+            <small>{c.records || 0} records</small>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FormModal({ title, fields, onClose, onSubmit }) {
+  const [form, setForm] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  function setValue(key, value) {
+    setForm(prev => ({ ...prev, [key]: value }));
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      await onSubmit(form);
+    } catch (err) {
+      setError(err.message || 'Could not save record.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop">
+      <form className="modal-card" onSubmit={submit}>
+        <div className="modal-head">
+          <div>
+            <span>New Record</span>
+            <h2>{title}</h2>
+          </div>
+          <button type="button" onClick={onClose}>×</button>
+        </div>
+
+        <div className="modal-grid">
+          {fields.map(f => (
+            <label key={f.key} className={f.large ? 'large' : ''}>
+              {f.label}
+              {f.type === 'textarea' ? (
+                <textarea value={form[f.key] || ''} onChange={e => setValue(f.key, e.target.value)} placeholder={f.placeholder || ''} />
+              ) : f.type === 'select' ? (
+                <select value={form[f.key] || ''} onChange={e => setValue(f.key, e.target.value)} required={f.required}>
+                  <option value="">Select...</option>
+                  {f.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              ) : (
+                <input type={f.inputType || 'text'} value={form[f.key] || ''} onChange={e => setValue(f.key, e.target.value)} placeholder={f.placeholder || ''} required={f.required} />
+              )}
+            </label>
+          ))}
+        </div>
+
+        {error && <div className="modal-error">{error}</div>}
+
+        <div className="modal-actions">
+          <button type="button" onClick={onClose}>Cancel</button>
+          <button className="primary" type="submit" disabled={busy}>{busy ? 'Saving...' : 'Save'}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+const CUSTOMER_FIELDS = [
+  { key: 'phone', label: 'Phone number', placeholder: '+263...', required: true },
+  { key: 'name', label: 'Customer name' },
+  { key: 'vehicle', label: 'Vehicle' },
+  { key: 'registration', label: 'Registration' },
+  { key: 'notes', label: 'Notes', type: 'textarea', large: true }
+];
+
+const SERVICE_OPTIONS = [
+  'Windscreen Replacement',
+  'Windscreen Repair',
+  'Side / Door Glass',
+  'Rear Glass',
+  'Ceramic Tint',
+  'Anti-smash and Grab Film',
+  'Alarms',
+  'Aircon',
+  'Trackers',
+  'Car Audio'
+];
+
+const PRIORITY_OPTIONS = [
+  'Normal',
+  'Urgent',
+  'Insurance',
+  'Waiting Parts',
+  'VIP'
+];
+
+const JOB_FIELDS = [
+  { key: 'customerPhone', label: 'Phone number', placeholder: '+263...', required: true },
+  { key: 'customerName', label: 'Customer name' },
+  { key: 'vehicle', label: 'Vehicle' },
+  { key: 'registration', label: 'Registration' },
+  { key: 'service', label: 'Service', type: 'select', options: SERVICE_OPTIONS, required: true },
+  { key: 'location', label: 'Location' },
+  { key: 'bookingDate', label: 'Booking Date', inputType: 'date' },
+  { key: 'bookingTime', label: 'Booking Time', inputType: 'time' },
+  { key: 'priority', label: 'Priority', type: 'select', options: PRIORITY_OPTIONS },
+  { key: 'fitter', label: 'Fitter / Technician' },
+  { key: 'notes', label: 'Notes', type: 'textarea', large: true }
+];
+
+
+function NotesTimeline({ api, refNo, refreshKey = 0 }) {
+  const [notes, setNotes] = useState([]);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadNotes() {
+      if (!refNo) {
+        setNotes([]);
+        return;
+      }
+
+      try {
+        const result = await api(`/notes?ref=${encodeURIComponent(refNo)}`);
+        if (alive) setNotes(result.notes || []);
+      } catch {
+        if (alive) setNotes([]);
+      }
+    }
+
+    loadNotes();
+    return () => { alive = false; };
+  }, [api, refNo, refreshKey]);
+
+  return (
+    <div className="notes-timeline">
+      <h3>Internal Notes</h3>
+
+      {!notes.length ? (
+        <div className="note-empty">No internal notes yet.</div>
+      ) : (
+        <div className="note-list">
+          {notes.map(n => (
+            <div className="note-item" key={n.id}>
+              <div>
+                <strong>{n.type || 'note'}</strong>
+                <span>{n.actor || 'studio'} • {n.createdAt || ''}</span>
+              </div>
+              <p>{n.note}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+function matchesSearch(row, q) {
+  if (!q) return true;
+  const text = JSON.stringify(row || {}).toLowerCase();
+  return text.includes(String(q).toLowerCase());
+}
+
+function matchesStatus(row, status) {
+  if (!status || status === 'all') return true;
+  const text = `${row?.publicStatus || ''} ${row?.status || ''} ${row?.jobType || ''} ${row?.type || ''}`.toLowerCase();
+  return text.includes(String(status).toLowerCase());
+}
+
+function FilterBar({ search, setSearch, status, setStatus, count, label = 'records' }) {
+  return (
+    <div className="filter-bar">
+      <div className="filter-search">
+        <span>Search</span>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search customer, phone, vehicle, ref..." />
+      </div>
+
+      <div className="filter-status">
+        <span>Status</span>
+        <select value={status} onChange={e => setStatus(e.target.value)}>
+          <option value="all">All</option>
+          <option value="new">New</option>
+          <option value="booked">Booked</option>
+          <option value="quote">Quote</option>
+          <option value="assigned">Assigned</option>
+          <option value="progress">In progress</option>
+          <option value="completed">Completed</option>
+          <option value="paid">Paid</option>
+          <option value="review">Review</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+
+      <strong>{count} {label}</strong>
+    </div>
+  );
+}
+
+function CustomerFilterBar({ search, setSearch, count }) {
+  return (
+    <div className="filter-bar customer-filter">
+      <div className="filter-search">
+        <span>Search</span>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, phone, vehicle, registration..." />
+      </div>
+      <strong>{count} customers</strong>
+    </div>
+  );
+}
+
+
+function csvEscape(value) {
+  const text = String(value ?? '');
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadCSV(filename, rows) {
+  if (!rows?.length) {
+    alert('No records to export.');
+    return;
+  }
+
+  const flatRows = rows.map(row => ({
+    ref: row.ref || row.claimNo || row.jobNo || '',
+    customer: row.customerName || row.name || '',
+    phone: row.customerPhone || row.phone || '',
+    vehicle: row.vehicle || '',
+    registration: row.registration || row.reg || '',
+    service: row.service || '',
+    status: row.publicStatus || row.status || '',
+    updatedAt: row.updatedAt || row.createdAt || ''
+  }));
+
+  const headers = Object.keys(flatRows[0]);
+  const csv = [
+    headers.map(csvEscape).join(','),
+    ...flatRows.map(row => headers.map(h => csvEscape(row[h])).join(','))
+  ].join('\\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function printCard(title, rows) {
+  const content = rows.map(([k, v]) => `
+    <tr>
+      <th>${String(k)}</th>
+      <td>${String(v ?? '-')}</td>
+    </tr>
+  `).join('');
+
+  const html = `
+    <!doctype html>
+    <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 34px; color: #101828; }
+          .head { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px solid #1268ff; padding-bottom:18px; margin-bottom:24px; }
+          h1 { margin:0; font-size:30px; }
+          p { margin:6px 0 0; color:#667085; }
+          table { width:100%; border-collapse:collapse; margin-top:12px; }
+          th, td { border:1px solid #d0d5dd; padding:12px; text-align:left; vertical-align:top; }
+          th { width:34%; background:#f2f4f7; }
+          .footer { margin-top:34px; color:#667085; font-size:12px; border-top:1px solid #d0d5dd; padding-top:12px; }
+        </style>
+      </head>
+      <body>
+        <div class="head">
+          <div>
+            <h1>${title}</h1>
+            <p>Windscreen Automation Dashboard</p>
+          </div>
+          <p>${new Date().toLocaleString()}</p>
+        </div>
+        <table>${content}</table>
+        <div class="footer">Generated from VisionCo Windscreen Automation Dashboard.</div>
+        <script>window.print();</script>
+      </body>
+    </html>
+  `;
+
+  const w = window.open('', '_blank');
+  if (!w) {
+    alert('Popup blocked. Please allow popups for this dashboard.');
+    return;
+  }
+
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+}
+
+function TableTools({ onExport }) {
+  return (
+    <div className="table-tools">
+      <button onClick={onExport}>Export CSV</button>
+    </div>
+  );
+}
+
+
+function toDateKey(value) {
+  if (!value) return '';
+  return String(value).slice(0, 10);
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function scheduleDate(row) {
+  return row?.bookingDate || row?.booking_date || row?.data?.bookingDate || row?.createdAt || row?.updatedAt || '';
+}
+
+function scheduleTime(row) {
+  return row?.bookingTime || row?.booking_time || row?.data?.bookingTime || '';
+}
+
+function schedulePriority(row) {
+  return row?.priority || row?.data?.priority || 'Normal';
+}
+
+function SchedulePage({ data, setActive }) {
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState('today');
+
+  const today = todayKey();
+
+  const allRows = [
+    ...(data.bookings || []),
+    ...(data.jobs || [])
+  ].filter((row, index, arr) => {
+    const id = row.jobNo || row.ref || `${row.customerPhone}-${row.createdAt}`;
+    return arr.findIndex(x => (x.jobNo || x.ref || `${x.customerPhone}-${x.createdAt}`) === id) === index;
+  });
+
+  const datedRows = allRows.map(row => ({
+    ...row,
+    scheduleDateKey: toDateKey(scheduleDate(row)),
+    scheduleTimeValue: scheduleTime(row),
+    schedulePriorityValue: schedulePriority(row)
+  }));
+
+  const filteredRows = datedRows
+    .filter(row => matchesSearch(row, search))
+    .filter(row => {
+      if (view === 'all') return true;
+      if (view === 'today') return row.scheduleDateKey === today;
+      if (view === 'upcoming') return row.scheduleDateKey && row.scheduleDateKey > today;
+      if (view === 'overdue') return row.scheduleDateKey && row.scheduleDateKey < today && !String(row.publicStatus || row.status || '').toLowerCase().includes('completed');
+      return true;
+    })
+    .sort((a, b) => `${a.scheduleDateKey} ${a.scheduleTimeValue}`.localeCompare(`${b.scheduleDateKey} ${b.scheduleTimeValue}`));
+
+  const todayRows = datedRows.filter(r => r.scheduleDateKey === today);
+  const upcomingRows = datedRows.filter(r => r.scheduleDateKey && r.scheduleDateKey > today);
+  const overdueRows = datedRows.filter(r => r.scheduleDateKey && r.scheduleDateKey < today && !String(r.publicStatus || r.status || '').toLowerCase().includes('completed'));
+
+  function printSchedule() {
+    const rows = filteredRows.map(r => [
+      r.scheduleDateKey || '-',
+      `${r.scheduleTimeValue || '-'} | ${r.customerName || r.customerPhone || '-'}`,
+      `${r.vehicle || '-'} | ${r.service || '-'}`,
+      `${r.location || '-'} | ${r.schedulePriorityValue || 'Normal'} | ${r.publicStatus || r.status || '-'}`
+    ]);
+
+    if (!rows.length) {
+      alert('No schedule records to print.');
+      return;
+    }
+
+    const content = rows.map((r, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${r[0]}</td>
+        <td>${r[1]}</td>
+        <td>${r[2]}</td>
+        <td>${r[3]}</td>
+      </tr>
+    `).join('');
+
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <title>Workshop Schedule</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 34px; color: #101828; }
+            h1 { margin:0; font-size:30px; }
+            p { margin:6px 0 22px; color:#667085; }
+            table { width:100%; border-collapse:collapse; }
+            th, td { border:1px solid #d0d5dd; padding:10px; text-align:left; vertical-align:top; font-size:13px; }
+            th { background:#f2f4f7; }
+            .head { border-bottom:3px solid #1268ff; padding-bottom:18px; margin-bottom:24px; }
+          </style>
+        </head>
+        <body>
+          <div class="head">
+            <h1>Workshop Schedule</h1>
+            <p>View: ${view} • Generated ${new Date().toLocaleString()}</p>
+          </div>
+          <table>
+            <thead>
+              <tr><th>#</th><th>Date</th><th>Time / Customer</th><th>Vehicle / Service</th><th>Location / Priority / Status</th></tr>
+            </thead>
+            <tbody>${content}</tbody>
+          </table>
+          <script>window.print();</script>
+        </body>
+      </html>
+    `;
+
+    const w = window.open('', '_blank');
+    if (!w) {
+      alert('Popup blocked. Please allow popups for this dashboard.');
+      return;
+    }
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  }
+
+  return (
+    <Page title="Schedule" sub="Daily workshop plan for bookings, jobs, fitters and priorities.">
+      <div className="schedule-summary">
+        <SpotlightCard className="schedule-mini-card">
+          <span>Today</span>
+          <strong>{todayRows.length}</strong>
+          <small>{today}</small>
+        </SpotlightCard>
+        <SpotlightCard className="schedule-mini-card">
+          <span>Upcoming</span>
+          <strong>{upcomingRows.length}</strong>
+          <small>future bookings</small>
+        </SpotlightCard>
+        <SpotlightCard className="schedule-mini-card urgent">
+          <span>Overdue</span>
+          <strong>{overdueRows.length}</strong>
+          <small>not completed</small>
+        </SpotlightCard>
+      </div>
+
+      <SpotlightCard className="panel-card">
+        <div className="schedule-toolbar">
+          <div className="filter-search">
+            <span>Search Schedule</span>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search customer, fitter, vehicle, service..." />
+          </div>
+
+          <div className="filter-status">
+            <span>View</span>
+            <select value={view} onChange={e => setView(e.target.value)}>
+              <option value="today">Today</option>
+              <option value="upcoming">Upcoming</option>
+              <option value="overdue">Overdue</option>
+              <option value="all">All Schedule</option>
+            </select>
+          </div>
+
+          <strong>{filteredRows.length} records</strong>
+        </div>
+
+        <div className="table-tools">
+          <button onClick={() => downloadCSV(`schedule-${view}.csv`, filteredRows)}>Export Schedule CSV</button>
+          <button onClick={printSchedule}>Print Schedule</button>
+        </div>
+
+        {!filteredRows.length ? (
+          <EmptyState title="No schedule records found" copy="Create a booking with date and time to see it here." />
+        ) : (
+          <div className="schedule-list">
+            {filteredRows.map(row => (
+              <button key={row.jobNo || row.ref} onClick={() => setActive(row.jobType === 'booking' ? 'bookings' : 'jobs')}>
+                <div className="schedule-date">
+                  <b>{row.scheduleDateKey || 'No date'}</b>
+                  <span>{row.scheduleTimeValue || 'No time'}</span>
+                </div>
+
+                <div>
+                  <strong>{row.customerName || row.customerPhone || '-'}</strong>
+                  <small>{row.vehicle || '-'} • {row.registration || '-'}</small>
+                </div>
+
+                <div>
+                  <strong>{row.service || '-'}</strong>
+                  <small>{row.location || '-'} • {row.fitter || row.assignedTo || row.data?.fitter || 'No fitter'}</small>
+                </div>
+
+                <div className="schedule-status">
+                  <Badge>{row.publicStatus || row.status}</Badge>
+                  <em>{row.schedulePriorityValue || 'Normal'}</em>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </SpotlightCard>
+
+      <MadeBy />
+    </Page>
+  );
+}
+
+
+
+function normalStatus(row) {
+  return String(row?.status || row?.publicStatus || '').toLowerCase();
+}
+
+function pipelineBucket(row) {
+  const s = normalStatus(row);
+  const t = String(row?.jobType || row?.type || '').toLowerCase();
+
+  if (s.includes('paid') || s.includes('completed') || s.includes('closed')) return 'done';
+  if (s.includes('waiting')) return 'waiting';
+  if (s.includes('progress')) return 'progress';
+  if (s.includes('assigned')) return 'assigned';
+  if (s.includes('quoted') || s.includes('quote')) return 'quoted';
+  if (t.includes('quote')) return 'quoted';
+
+  return 'new';
+}
+
+const PIPELINE_COLUMNS = [
+  { key: 'new', title: 'New / Booked', next: 'assigned', nextLabel: 'Assign / Move' },
+  { key: 'quoted', title: 'Quoted', next: 'assigned', nextLabel: 'Mark Assigned' },
+  { key: 'assigned', title: 'Assigned', next: 'in_progress', nextLabel: 'Start Job' },
+  { key: 'progress', title: 'In Progress', next: 'completed', nextLabel: 'Complete' },
+  { key: 'waiting', title: 'Waiting Parts', next: 'in_progress', nextLabel: 'Resume' },
+  { key: 'done', title: 'Completed / Paid', next: '', nextLabel: '' }
+];
+
+function PipelinePage({ data, api, reload }) {
+  const [search, setSearch] = useState('');
+
+  const rows = [
+    ...(data.bookings || []),
+    ...(data.quotes || []),
+    ...(data.jobs || [])
+  ].filter((row, index, arr) => {
+    const id = row.jobNo || row.ref || `${row.customerPhone}-${row.createdAt}`;
+    return arr.findIndex(x => (x.jobNo || x.ref || `${x.customerPhone}-${x.createdAt}`) === id) === index;
+  }).filter(row => matchesSearch(row, search));
+
+  async function moveJob(row, status) {
+    if (!row?.jobNo || !status) return;
+    await api(`/jobs/${row.jobNo}/status`, 'POST', { status });
+    await api('/notes', 'POST', {
+      ref: row.jobNo,
+      type: 'pipeline',
+      note: `Moved in pipeline to ${status.replaceAll('_', ' ')}.`
+    });
+    await reload();
+  }
+
+  async function quickAssign(row) {
+    if (!row?.jobNo) return;
+
+    const fitter = await chooseTeamFitter(api);
+    if (!fitter) return;
+
+    await api(`/jobs/${row.jobNo}/workflow`, 'POST', { action: 'assign_fitter', value: fitter });
+    await reload();
+  }
+
+  return (
+    <Page title="Pipeline" sub="Visual workflow board for bookings, quotes and active workshop jobs.">
+      <SpotlightCard className="panel-card">
+        <div className="pipeline-toolbar">
+          <div className="filter-search">
+            <span>Search Pipeline</span>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search ref, customer, vehicle, fitter, service..." />
+          </div>
+
+          <strong>{rows.length} records</strong>
+
+          <button onClick={() => downloadCSV('pipeline-export.csv', rows)}>Export Pipeline CSV</button>
+        </div>
+
+        <div className="pipeline-board">
+          {PIPELINE_COLUMNS.map(col => {
+            const colRows = rows.filter(row => pipelineBucket(row) === col.key);
+
+            return (
+              <div className="pipeline-column" key={col.key}>
+                <div className="pipeline-column-head">
+                  <h3>{col.title}</h3>
+                  <span>{colRows.length}</span>
+                </div>
+
+                {!colRows.length ? (
+                  <div className="pipeline-empty">No records</div>
+                ) : (
+                  <div className="pipeline-cards">
+                    {colRows.map(row => (
+                      <div className="pipeline-card" key={row.jobNo || row.ref}>
+                        <div className="pipeline-card-head">
+                          <strong>{row.ref || row.jobNo}</strong>
+                          <Badge>{row.publicStatus || row.status}</Badge>
+                        </div>
+
+                        <h4>{row.customerName || row.customerPhone || '-'}</h4>
+                        <p>{row.vehicle || '-'} • {row.registration || '-'}</p>
+                        <p>{row.service || '-'}</p>
+
+                        <div className="pipeline-meta">
+                          <span>{row.bookingDate || row.data?.bookingDate || 'No date'}</span>
+                          <span>{row.fitter || row.assignedTo || row.data?.fitter || 'No fitter'}</span>
+                        </div>
+
+                        <div className="pipeline-actions">
+                          {col.key !== 'assigned' && col.key !== 'done' && (
+                            <button onClick={() => quickAssign(row)}>Assign</button>
+                          )}
+
+                          {col.next && (
+                            <button className="primary" onClick={() => moveJob(row, col.next)}>{col.nextLabel}</button>
+                          )}
+
+                          {col.key !== 'waiting' && col.key !== 'done' && (
+                            <button onClick={() => moveJob(row, 'waiting_parts')}>Waiting Parts</button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </SpotlightCard>
+
+      <MadeBy />
+    </Page>
+  );
+}
+
+
+
+function getQuoteValue(row) {
+  const raw = row?.quoteAmount || row?.quote_amount || row?.data?.quoteAmount || row?.data?.quote_amount || 0;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function countBy(rows, getKey) {
+  const out = {};
+  (rows || []).forEach(row => {
+    const key = getKey(row) || 'Unknown';
+    out[key] = (out[key] || 0) + 1;
+  });
+  return Object.entries(out)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+function sumBy(rows, getValue) {
+  return (rows || []).reduce((total, row) => total + Number(getValue(row) || 0), 0);
+}
+
+function ReportBar({ label, value, max }) {
+  const pct = max ? Math.max(4, Math.round((value / max) * 100)) : 0;
+
+  return (
+    <div className="report-bar-row">
+      <div>
+        <strong>{label}</strong>
+        <span>{value}</span>
+      </div>
+      <i>
+        <b style={{ width: `${pct}%` }}></b>
+      </i>
+    </div>
+  );
+}
+
+function ReportsPage({ data }) {
+  const bookings = data.bookings || [];
+  const quotes = data.quotes || [];
+  const claims = data.claims || [];
+  const jobs = data.jobs || [];
+  const customers = data.customers || [];
+
+  const allWork = [...bookings, ...quotes, ...jobs];
+  const services = countBy(allWork, row => row.service || 'Unspecified');
+  const statuses = countBy([...allWork, ...claims], row => row.publicStatus || row.status || 'New');
+
+  const maxService = Math.max(1, ...services.map(x => x.count));
+  const maxStatus = Math.max(1, ...statuses.map(x => x.count));
+
+  const quoteValue = sumBy(allWork, getQuoteValue);
+  const today = new Date().toISOString().slice(0, 10);
+
+  const scheduleRows = allWork.map(row => ({
+    ...row,
+    scheduleDateKey: String(row.bookingDate || row.booking_date || row.data?.bookingDate || '').slice(0, 10)
+  }));
+
+  const todayCount = scheduleRows.filter(r => r.scheduleDateKey === today).length;
+  const upcomingCount = scheduleRows.filter(r => r.scheduleDateKey && r.scheduleDateKey > today).length;
+  const overdueCount = scheduleRows.filter(r => {
+    const done = String(r.publicStatus || r.status || '').toLowerCase().includes('completed');
+    return r.scheduleDateKey && r.scheduleDateKey < today && !done;
+  }).length;
+
+  const reportRows = [
+    { metric: 'Bookings', value: bookings.length },
+    { metric: 'Quotes', value: quotes.length },
+    { metric: 'Claims', value: claims.length },
+    { metric: 'Jobs', value: jobs.length },
+    { metric: 'Customers', value: customers.length },
+    { metric: 'Today schedule', value: todayCount },
+    { metric: 'Upcoming schedule', value: upcomingCount },
+    { metric: 'Overdue schedule', value: overdueCount },
+    { metric: 'Quote value estimate', value: `$${quoteValue.toFixed(2)}` }
+  ];
+
+  function exportReport() {
+    const rows = [
+      ...reportRows.map(r => ({ ref: r.metric, customer: r.value, phone: '', vehicle: '', registration: '', service: '', status: 'Report', updatedAt: today })),
+      ...services.map(r => ({ ref: 'Service', customer: r.name, phone: r.count, vehicle: '', registration: '', service: r.name, status: 'Service Breakdown', updatedAt: today })),
+      ...statuses.map(r => ({ ref: 'Status', customer: r.name, phone: r.count, vehicle: '', registration: '', service: '', status: 'Status Breakdown', updatedAt: today }))
+    ];
+    downloadCSV('dashboard-report.csv', rows);
+  }
+
+  function printReport() {
+    printCard('Dashboard Report Summary', [
+      ['Bookings', bookings.length],
+      ['Quotes', quotes.length],
+      ['Claims', claims.length],
+      ['Jobs', jobs.length],
+      ['Customers', customers.length],
+      ['Today Schedule', todayCount],
+      ['Upcoming Schedule', upcomingCount],
+      ['Overdue Schedule', overdueCount],
+      ['Quote Value Estimate', `$${quoteValue.toFixed(2)}`],
+      ['Top Service', services[0] ? `${services[0].name} (${services[0].count})` : '-'],
+      ['Top Status', statuses[0] ? `${statuses[0].name} (${statuses[0].count})` : '-']
+    ]);
+  }
+
+  return (
+    <Page title="Reports" sub="Workshop performance, service demand, status breakdown and schedule insights.">
+      <div className="reports-kpi-grid">
+        <SpotlightCard className="report-kpi"><span>Bookings</span><strong>{bookings.length}</strong><small>customer bookings</small></SpotlightCard>
+        <SpotlightCard className="report-kpi"><span>Quotes</span><strong>{quotes.length}</strong><small>quote requests</small></SpotlightCard>
+        <SpotlightCard className="report-kpi"><span>Claims</span><strong>{claims.length}</strong><small>insurance claims</small></SpotlightCard>
+        <SpotlightCard className="report-kpi"><span>Jobs</span><strong>{jobs.length}</strong><small>workshop jobs</small></SpotlightCard>
+        <SpotlightCard className="report-kpi"><span>Customers</span><strong>{customers.length}</strong><small>customer profiles</small></SpotlightCard>
+        <SpotlightCard className="report-kpi money"><span>Quote Value</span><strong>${quoteValue.toFixed(2)}</strong><small>estimated pipeline value</small></SpotlightCard>
+      </div>
+
+      <SpotlightCard className="panel-card">
+        <div className="reports-head">
+          <div>
+            <h2>Report Actions</h2>
+            <p>Export or print a quick workshop summary.</p>
+          </div>
+          <div className="table-tools">
+            <button onClick={exportReport}>Export Report CSV</button>
+            <button onClick={printReport}>Print Report Summary</button>
+          </div>
+        </div>
+      </SpotlightCard>
+
+      <div className="reports-grid">
+        <SpotlightCard className="panel-card">
+          <SectionHead title="Schedule Overview" />
+          <div className="report-schedule-grid">
+            <div><strong>{todayCount}</strong><span>Today</span></div>
+            <div><strong>{upcomingCount}</strong><span>Upcoming</span></div>
+            <div className="danger"><strong>{overdueCount}</strong><span>Overdue</span></div>
+          </div>
+        </SpotlightCard>
+
+        <SpotlightCard className="panel-card">
+          <SectionHead title="Status Breakdown" />
+          {!statuses.length ? (
+            <EmptyState title="No status data yet" />
+          ) : (
+            <div className="report-bars">
+              {statuses.slice(0, 8).map(row => (
+                <ReportBar key={row.name} label={row.name} value={row.count} max={maxStatus} />
+              ))}
+            </div>
+          )}
+        </SpotlightCard>
+      </div>
+
+      <SpotlightCard className="panel-card">
+        <SectionHead title="Service Demand" />
+        {!services.length ? (
+          <EmptyState title="No service data yet" />
+        ) : (
+          <div className="report-bars">
+            {services.slice(0, 12).map(row => (
+              <ReportBar key={row.name} label={row.name} value={row.count} max={maxService} />
+            ))}
+          </div>
+        )}
+      </SpotlightCard>
+
+      <MadeBy />
+    </Page>
+  );
+}
+
+
+
+function ActivityPage({ api }) {
+  const [rows, setRows] = useState([]);
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [loading, setLoading] = useState(true);
+
+  async function loadActivity() {
+    setLoading(true);
+    try {
+      const result = await api('/activity?limit=500');
+      setRows(result.activity || []);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadActivity();
+  }, []);
+
+  const types = Array.from(new Set(rows.map(r => r.type || 'note'))).sort();
+
+  const filteredRows = rows.filter(row => {
+    const textOk = matchesSearch(row, search);
+    const typeOk = typeFilter === 'all' || String(row.type || 'note') === typeFilter;
+    return textOk && typeOk;
+  });
+
+  function exportActivity() {
+    const exportRows = filteredRows.map(row => ({
+      ref: row.ref || '',
+      customer: row.type || '',
+      phone: row.actor || '',
+      vehicle: '',
+      registration: '',
+      service: row.note || '',
+      status: 'Activity',
+      updatedAt: row.createdAt || ''
+    }));
+
+    downloadCSV('activity-log.csv', exportRows);
+  }
+
+  function printActivity() {
+    const topRows = filteredRows.slice(0, 80);
+
+    if (!topRows.length) {
+      alert('No activity to print.');
+      return;
+    }
+
+    const content = topRows.map((r, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${r.createdAt || '-'}</td>
+        <td>${r.ref || '-'}</td>
+        <td>${r.type || '-'}</td>
+        <td>${r.actor || '-'}</td>
+        <td>${r.note || '-'}</td>
+      </tr>
+    `).join('');
+
+    const html = `
+      <!doctype html>
+      <html>
+        <head>
+          <title>Activity Log</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 34px; color: #101828; }
+            h1 { margin:0; font-size:30px; }
+            p { margin:6px 0 22px; color:#667085; }
+            table { width:100%; border-collapse:collapse; }
+            th, td { border:1px solid #d0d5dd; padding:9px; text-align:left; vertical-align:top; font-size:12px; }
+            th { background:#f2f4f7; }
+            .head { border-bottom:3px solid #1268ff; padding-bottom:18px; margin-bottom:24px; }
+          </style>
+        </head>
+        <body>
+          <div class="head">
+            <h1>Activity Log</h1>
+            <p>Generated ${new Date().toLocaleString()}</p>
+          </div>
+          <table>
+            <thead>
+              <tr><th>#</th><th>Date</th><th>Reference</th><th>Type</th><th>Actor</th><th>Note</th></tr>
+            </thead>
+            <tbody>${content}</tbody>
+          </table>
+          <script>window.print();</script>
+        </body>
+      </html>
+    `;
+
+    const w = window.open('', '_blank');
+    if (!w) {
+      alert('Popup blocked. Please allow popups for this dashboard.');
+      return;
+    }
+
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+  }
+
+  return (
+    <Page title="Activity" sub="Audit trail for workflow actions, internal notes and customer updates.">
+      <SpotlightCard className="panel-card">
+        <div className="activity-toolbar">
+          <div className="filter-search">
+            <span>Search Activity</span>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search ref, note, actor, type..." />
+          </div>
+
+          <div className="filter-status">
+            <span>Type</span>
+            <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
+              <option value="all">All</option>
+              {types.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+
+          <strong>{filteredRows.length} records</strong>
+        </div>
+
+        <div className="table-tools">
+          <button onClick={loadActivity}>{loading ? 'Refreshing...' : 'Refresh Activity'}</button>
+          <button onClick={exportActivity}>Export Activity CSV</button>
+          <button onClick={printActivity}>Print Activity</button>
+        </div>
+
+        {loading ? (
+          <EmptyState title="Loading activity..." />
+        ) : !filteredRows.length ? (
+          <EmptyState title="No activity found" copy="Try another search or type filter." />
+        ) : (
+          <div className="activity-list">
+            {filteredRows.map(row => (
+              <div className="activity-row" key={row.id}>
+                <div className="activity-icon">
+                  <ShieldCheck size={18} />
+                </div>
+
+                <div>
+                  <div className="activity-row-head">
+                    <strong>{row.type || 'note'}</strong>
+                    <span>{row.createdAt || ''}</span>
+                  </div>
+                  <p>{row.note}</p>
+                  <small>{row.ref || 'No ref'} • {row.actor || 'studio'}</small>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </SpotlightCard>
+
+      <MadeBy />
+    </Page>
+  );
+}
+
+
+
+const FITTER_FIELDS = [
+  { key: 'name', label: 'Name', required: true },
+  { key: 'phone', label: 'WhatsApp number', placeholder: '+263...' },
+  { key: 'role', label: 'Role', type: 'select', options: ['Fitter', 'Technician', 'Installer', 'Supervisor', 'Sales', 'Admin'] },
+  { key: 'notes', label: 'Notes', type: 'textarea', large: true }
+];
+
+function TeamPage({ api, data = {} }) {
+  const [rows, setRows] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [showInactive, setShowInactive] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  async function loadTeam() {
+    setLoading(true);
+    try {
+      const result = await api('/fitters');
+      const list = result.fitters || [];
+      setRows(list);
+      setSelected(current => current || list[0] || null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadTeam();
+  }, []);
+
+  const filteredRows = rows
+    .filter(row => showInactive ? true : Number(row.active) === 1)
+    .filter(row => matchesSearch(row, search));
+
+  const assignedWork = [
+    ...(data.bookings || []),
+    ...(data.quotes || []),
+    ...(data.jobs || [])
+  ].filter(row => {
+    const assigned = row.fitter || row.assignedTo || row.assigned_to || row.data?.fitter || '';
+    return selected?.name && String(assigned).toLowerCase() === String(selected.name).toLowerCase();
+  });
+
+  useEffect(() => {
+    if (filteredRows.length && !filteredRows.some(r => r.id === selected?.id)) {
+      setSelected(filteredRows[0]);
+    }
+    if (!filteredRows.length) setSelected(null);
+  }, [search, showInactive, rows]);
+
+  async function createFitter(form) {
+    await api('/fitters', 'POST', form);
+    setModalOpen(false);
+    alert('Team member saved.');
+    await loadTeam();
+  }
+
+  async function setActive(active) {
+    if (!selected?.id) return;
+    await api(`/fitters/${selected.id}/status`, 'POST', { active });
+    await loadTeam();
+  }
+
+  async function messageFitter() {
+    if (!selected?.phone) {
+      alert('This team member has no phone number saved.');
+      return;
+    }
+
+    const msg = prompt('Message to team member:');
+    if (!msg) return;
+
+    await api('/message', 'POST', { phone: selected.phone, message: msg });
+    alert('Message sent.');
+  }
+
+  function exportTeam() {
+    const exportRows = filteredRows.map(row => ({
+      ref: `FITTER-${row.id}`,
+      customer: row.name || '',
+      phone: row.phone || '',
+      vehicle: '',
+      registration: '',
+      service: row.role || '',
+      status: Number(row.active) === 1 ? 'Active' : 'Inactive',
+      updatedAt: row.updatedAt || row.createdAt || ''
+    }));
+
+    downloadCSV('team-fitters-export.csv', exportRows);
+  }
+
+  function printTeamMember() {
+    if (!selected) return;
+
+    printCard(`Team Member - ${selected.name}`, [
+      ['Name', selected.name],
+      ['Phone', selected.phone || '-'],
+      ['Role', selected.role || '-'],
+      ['Status', Number(selected.active) === 1 ? 'Active' : 'Inactive'],
+      ['Notes', selected.notes || '-'],
+      ['Created', selected.createdAt || '-'],
+      ['Updated', selected.updatedAt || '-']
+    ]);
+  }
+
+  return (
+    <Page title="Team" sub="Manage fitters, technicians, installers and workshop staff.">
+      <div className="split">
+        <SpotlightCard className="panel-card">
+          <SectionHead title="Team Members" action="Add Team Member" onClick={() => setModalOpen(true)} />
+
+          <div className="team-toolbar">
+            <div className="filter-search">
+              <span>Search Team</span>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, phone, role..." />
+            </div>
+
+            <label className="team-toggle">
+              <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
+              Show inactive
+            </label>
+
+            <strong>{filteredRows.length} people</strong>
+          </div>
+
+          <div className="table-tools">
+            <button onClick={loadTeam}>{loading ? 'Refreshing...' : 'Refresh Team'}</button>
+            <button onClick={exportTeam}>Export Team CSV</button>
+          </div>
+
+          {!filteredRows.length ? (
+            <EmptyState title="No team members found" copy="Add fitters or technicians to start building your workshop team list." />
+          ) : (
+            <div className="team-list">
+              {filteredRows.map(row => (
+                <button key={row.id} onClick={() => setSelected(row)} className={selected?.id === row.id ? 'active' : ''}>
+                  <div className="team-avatar">{String(row.name || '?').slice(0, 1).toUpperCase()}</div>
+                  <div>
+                    <strong>{row.name}</strong>
+                    <small>{row.role || 'Fitter'} • {row.phone || 'No phone'}</small>
+                  </div>
+                  <Badge>{Number(row.active) === 1 ? 'Active' : 'Inactive'}</Badge>
+                </button>
+              ))}
+            </div>
+          )}
+        </SpotlightCard>
+
+        <SpotlightCard className="panel-card sticky">
+          {!selected ? (
+            <EmptyState title="No team member selected" />
+          ) : (
+            <>
+              <DetailHead label="Team Member" refNo={selected.name} status={Number(selected.active) === 1 ? 'Active' : 'Inactive'} />
+
+              <InfoGrid items={[
+                ['Phone', selected.phone || '-'],
+                ['Role', selected.role || '-'],
+                ['Assigned Work', assignedWork.length],
+                ['Notes', selected.notes || '-'],
+                ['Created', selected.createdAt || '-'],
+                ['Updated', selected.updatedAt || '-']
+              ]} />
+
+              <div className="actions">
+                <button className="primary" onClick={messageFitter}><MessageCircle size={15} /> Message Team Member</button>
+                <button onClick={printTeamMember}>Print Team Profile</button>
+                {Number(selected.active) === 1 ? (
+                  <button onClick={() => setActive(false)}>Deactivate</button>
+                ) : (
+                  <button onClick={() => setActive(true)}>Reactivate</button>
+                )}
+              </div>
+
+              <MiniSection title="Assigned Work" rows={assignedWork} />
+            </>
+          )}
+        </SpotlightCard>
+      </div>
+
+      {modalOpen && (
+        <FormModal
+          title="Add Team Member"
+          fields={FITTER_FIELDS}
+          onClose={() => setModalOpen(false)}
+          onSubmit={createFitter}
+        />
+      )}
+
+      <MadeBy />
+    </Page>
+  );
+}
+
+
+
+async function chooseTeamFitter(api) {
+  try {
+    const result = await api('/fitters');
+    const fitters = (result.fitters || []).filter(f => Number(f.active) === 1);
+
+    if (!fitters.length) {
+      const manual = prompt('No active team members found. Type fitter / technician name:');
+      return manual || '';
+    }
+
+    const menu = fitters.map((f, i) => `${i + 1}. ${f.name}${f.role ? ` - ${f.role}` : ''}${f.phone ? ` (${f.phone})` : ''}`).join('\n');
+    const answer = prompt(`Choose fitter by number, or type a new name:\n\n${menu}`);
+
+    if (!answer) return '';
+
+    const n = Number(answer);
+    if (Number.isInteger(n) && n >= 1 && n <= fitters.length) {
+      return fitters[n - 1].name;
+    }
+
+    return answer.trim();
+  } catch {
+    const manual = prompt('Could not load team list. Type fitter / technician name:');
+    return manual || '';
+  }
+}
+
+
+
+const PART_FIELDS = [
+  { key: 'name', label: 'Part / Glass Name', required: true },
+  { key: 'sku', label: 'SKU / Code' },
+  { key: 'category', label: 'Category', type: 'select', options: ['Windscreen', 'Side Glass', 'Rear Glass', 'Tint', 'Adhesive', 'Rubber / Moulding', 'Sensor / Mirror', 'General'] },
+  { key: 'quantity', label: 'Opening Quantity' },
+  { key: 'lowStock', label: 'Low Stock Alert Level' },
+  { key: 'supplier', label: 'Supplier' },
+  { key: 'costPrice', label: 'Cost Price USD' },
+  { key: 'sellingPrice', label: 'Selling Price USD' },
+  { key: 'notes', label: 'Notes', type: 'textarea', large: true }
+];
+
+function PartsPage({ api }) {
+  const [rows, setRows] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState('active');
+  const [loading, setLoading] = useState(true);
+
+  async function loadParts() {
+    setLoading(true);
+    try {
+      const result = await api('/parts');
+      const list = result.parts || [];
+      setRows(list);
+      setSelected(current => current || list[0] || null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadParts();
+  }, []);
+
+  const filteredRows = rows
+    .filter(row => {
+      if (view === 'all') return true;
+      if (view === 'low') return Number(row.quantity || 0) <= Number(row.lowStock || 0);
+      return Number(row.active) === 1;
+    })
+    .filter(row => matchesSearch(row, search));
+
+  useEffect(() => {
+    if (filteredRows.length && !filteredRows.some(r => r.id === selected?.id)) {
+      setSelected(filteredRows[0]);
+    }
+    if (!filteredRows.length) setSelected(null);
+  }, [search, view, rows]);
+
+  const lowStockCount = rows.filter(r => Number(r.quantity || 0) <= Number(r.lowStock || 0) && Number(r.active) === 1).length;
+  const totalStockValue = rows.reduce((t, r) => t + (Number(r.quantity || 0) * Number(r.costPrice || 0)), 0);
+
+  async function createPart(form) {
+    await api('/parts', 'POST', form);
+    setModalOpen(false);
+    alert('Part saved.');
+    await loadParts();
+  }
+
+  async function adjustStock(direction) {
+    if (!selected?.id) return;
+
+    const raw = prompt(direction === 'in' ? 'Stock IN quantity:' : 'Stock OUT quantity:');
+    if (!raw) return;
+
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) {
+      alert('Enter a valid quantity.');
+      return;
+    }
+
+    const reason = prompt('Reason / note:', direction === 'in' ? 'Stock received' : 'Used on job');
+    if (!reason) return;
+
+    await api(`/parts/${selected.id}/adjust`, 'POST', {
+      amount: direction === 'in' ? n : -n,
+      reason
+    });
+
+    await loadParts();
+  }
+
+  async function setActive(active) {
+    if (!selected?.id) return;
+    await api(`/parts/${selected.id}/status`, 'POST', { active });
+    await loadParts();
+  }
+
+  function exportParts() {
+    const exportRows = filteredRows.map(row => ({
+      ref: `PART-${row.id}`,
+      customer: row.name || '',
+      phone: row.sku || '',
+      vehicle: row.category || '',
+      registration: row.quantity || 0,
+      service: row.supplier || '',
+      status: Number(row.active) === 1 ? 'Active' : 'Inactive',
+      updatedAt: row.updatedAt || row.createdAt || ''
+    }));
+
+    downloadCSV('parts-inventory-export.csv', exportRows);
+  }
+
+  function printPartProfile() {
+    if (!selected) return;
+
+    printCard(`Part Profile - ${selected.name}`, [
+      ['Part', selected.name],
+      ['SKU', selected.sku || '-'],
+      ['Category', selected.category || '-'],
+      ['Quantity', selected.quantity ?? 0],
+      ['Low Stock Alert', selected.lowStock ?? 0],
+      ['Supplier', selected.supplier || '-'],
+      ['Cost Price', `$${Number(selected.costPrice || 0).toFixed(2)}`],
+      ['Selling Price', `$${Number(selected.sellingPrice || 0).toFixed(2)}`],
+      ['Status', Number(selected.active) === 1 ? 'Active' : 'Inactive'],
+      ['Notes', selected.notes || '-']
+    ]);
+  }
+
+  return (
+    <Page title="Parts" sub="Track windscreen stock, glass parts, adhesives, tint materials and workshop inventory.">
+      <div className="parts-summary">
+        <SpotlightCard className="parts-mini-card">
+          <span>Total Parts</span>
+          <strong>{rows.length}</strong>
+          <small>inventory items</small>
+        </SpotlightCard>
+        <SpotlightCard className="parts-mini-card urgent">
+          <span>Low Stock</span>
+          <strong>{lowStockCount}</strong>
+          <small>need attention</small>
+        </SpotlightCard>
+        <SpotlightCard className="parts-mini-card money">
+          <span>Stock Value</span>
+          <strong>${totalStockValue.toFixed(2)}</strong>
+          <small>estimated cost value</small>
+        </SpotlightCard>
+      </div>
+
+      <div className="split">
+        <SpotlightCard className="panel-card">
+          <SectionHead title="Inventory List" action="Add Part" onClick={() => setModalOpen(true)} />
+
+          <div className="parts-toolbar">
+            <div className="filter-search">
+              <span>Search Parts</span>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search part, SKU, supplier, category..." />
+            </div>
+
+            <div className="filter-status">
+              <span>View</span>
+              <select value={view} onChange={e => setView(e.target.value)}>
+                <option value="active">Active</option>
+                <option value="low">Low Stock</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+
+            <strong>{filteredRows.length} parts</strong>
+          </div>
+
+          <div className="table-tools">
+            <button onClick={loadParts}>{loading ? 'Refreshing...' : 'Refresh Parts'}</button>
+            <button onClick={exportParts}>Export Parts CSV</button>
+          </div>
+
+          {!filteredRows.length ? (
+            <EmptyState title="No parts found" copy="Add inventory items to start tracking stock." />
+          ) : (
+            <div className="parts-list">
+              {filteredRows.map(row => {
+                const low = Number(row.quantity || 0) <= Number(row.lowStock || 0);
+
+                return (
+                  <button key={row.id} onClick={() => setSelected(row)} className={selected?.id === row.id ? 'active' : ''}>
+                    <div>
+                      <strong>{row.name}</strong>
+                      <small>{row.sku || 'No SKU'} • {row.category || 'General'}</small>
+                    </div>
+
+                    <div>
+                      <b>{row.quantity ?? 0}</b>
+                      <small>in stock</small>
+                    </div>
+
+                    <Badge>{low ? 'Low Stock' : Number(row.active) === 1 ? 'Active' : 'Inactive'}</Badge>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </SpotlightCard>
+
+        <SpotlightCard className="panel-card sticky">
+          {!selected ? (
+            <EmptyState title="No part selected" />
+          ) : (
+            <>
+              <DetailHead label="Inventory Part" refNo={selected.name} status={Number(selected.quantity || 0) <= Number(selected.lowStock || 0) ? 'Low Stock' : 'In Stock'} />
+
+              <InfoGrid items={[
+                ['SKU', selected.sku || '-'],
+                ['Category', selected.category || '-'],
+                ['Quantity', selected.quantity ?? 0],
+                ['Low Stock Alert', selected.lowStock ?? 0],
+                ['Supplier', selected.supplier || '-'],
+                ['Cost Price', `$${Number(selected.costPrice || 0).toFixed(2)}`],
+                ['Selling Price', `$${Number(selected.sellingPrice || 0).toFixed(2)}`],
+                ['Notes', selected.notes || '-']
+              ]} />
+
+              <div className="actions">
+                <button className="primary" onClick={() => adjustStock('in')}>Stock In</button>
+                <button className="primary" onClick={() => adjustStock('out')}>Stock Out</button>
+                <button onClick={printPartProfile}>Print Part Profile</button>
+                {Number(selected.active) === 1 ? (
+                  <button onClick={() => setActive(false)}>Deactivate</button>
+                ) : (
+                  <button onClick={() => setActive(true)}>Reactivate</button>
+                )}
+              </div>
+            </>
+          )}
+        </SpotlightCard>
+      </div>
+
+      {modalOpen && (
+        <FormModal
+          title="Add Part"
+          fields={PART_FIELDS}
+          onClose={() => setModalOpen(false)}
+          onSubmit={createPart}
+        />
+      )}
+
+      <MadeBy />
+    </Page>
+  );
+}
+
+
+
+function JobPartsPanel({ api, selected, reload }) {
+  const [usedParts, setUsedParts] = useState([]);
+  const [inventory, setInventory] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  async function loadJobParts() {
+    if (!selected?.jobNo) {
+      setUsedParts([]);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await api(`/jobs/${selected.jobNo}/parts`);
+      setUsedParts(result.parts || []);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadInventory() {
+    try {
+      const result = await api('/parts');
+      setInventory(result.parts || []);
+    } catch {
+      setInventory([]);
+    }
+  }
+
+  useEffect(() => {
+    loadJobParts();
+    loadInventory();
+  }, [selected?.jobNo]);
+
+  async function addPartToJob() {
+    if (!selected?.jobNo) return;
+
+    let activeParts = inventory.filter(p => Number(p.active) === 1);
+
+    if (!activeParts.length) {
+      await loadInventory();
+      activeParts = inventory.filter(p => Number(p.active) === 1);
+    }
+
+    if (!activeParts.length) {
+      alert('No active parts found. Add parts in the Parts tab first.');
+      return;
+    }
+
+    const menu = activeParts
+      .map((p, i) => `${i + 1}. ${p.name} | Stock: ${p.quantity ?? 0} | ${p.sku || 'No SKU'}`)
+      .join('\n');
+
+    const answer = prompt(`Choose part by number:\n\n${menu}`);
+    if (!answer) return;
+
+    const n = Number(answer);
+    if (!Number.isInteger(n) || n < 1 || n > activeParts.length) {
+      alert('Invalid part number.');
+      return;
+    }
+
+    const part = activeParts[n - 1];
+    const qtyRaw = prompt(`Quantity to use for ${part.name}:`);
+    if (!qtyRaw) return;
+
+    const qty = Number(qtyRaw);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      alert('Enter a valid quantity.');
+      return;
+    }
+
+    await api(`/jobs/${selected.jobNo}/parts`, 'POST', {
+      partId: part.id,
+      quantity: qty
+    });
+
+    alert('Part added to job and stock reduced.');
+    await loadJobParts();
+    await loadInventory();
+    await reload();
+  }
+
+  async function removePart(row) {
+    if (!selected?.jobNo || !row?.id) return;
+    if (!confirm(`Remove ${row.quantity} x ${row.partName} from this job and restore stock?`)) return;
+
+    await api(`/jobs/${selected.jobNo}/parts/${row.id}/remove`, 'POST', {});
+    await loadJobParts();
+    await loadInventory();
+    await reload();
+  }
+
+  const total = usedParts.reduce((t, p) => t + Number(p.total || 0), 0);
+
+  return (
+    <div className="job-parts-panel">
+      <div className="job-parts-head">
+        <div>
+          <h3>Parts / Materials Used</h3>
+          <p>{usedParts.length} item(s) • ${total.toFixed(2)} estimated value</p>
+        </div>
+        <button className="primary" onClick={addPartToJob}>Add Part Used</button>
+      </div>
+
+      {loading ? (
+        <div className="note-empty">Loading parts...</div>
+      ) : !usedParts.length ? (
+        <div className="note-empty">No parts recorded on this job yet.</div>
+      ) : (
+        <div className="job-parts-list">
+          {usedParts.map(row => (
+            <div className="job-part-row" key={row.id}>
+              <div>
+                <strong>{row.partName}</strong>
+                <small>{row.sku || 'No SKU'} • {row.createdAt || ''}</small>
+              </div>
+
+              <div>
+                <b>{row.quantity}</b>
+                <small>qty</small>
+              </div>
+
+              <div>
+                <b>${Number(row.total || 0).toFixed(2)}</b>
+                <small>${Number(row.unitPrice || 0).toFixed(2)} each</small>
+              </div>
+
+              <button onClick={() => removePart(row)}>Remove</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+function quoteValueOf(row) {
+  return Number(row?.quoteAmount || row?.quote_amount || row?.data?.quoteAmount || 0);
+}
+
+function PaymentPanel({ api, selected, reload }) {
+  const [payments, setPayments] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  async function loadPayments() {
+    if (!selected?.jobNo) {
+      setPayments([]);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await api(`/jobs/${selected.jobNo}/payments`);
+      setPayments(result.payments || []);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadPayments();
+  }, [selected?.jobNo]);
+
+  const quote = quoteValueOf(selected);
+  const paid = payments.reduce((t, p) => t + Number(p.amount || 0), 0);
+  const balance = Math.max(0, quote - paid);
+
+  async function recordPayment() {
+    if (!selected?.jobNo) return;
+
+    const amountRaw = prompt('Payment amount USD:');
+    if (!amountRaw) return;
+
+    const amount = Number(amountRaw);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert('Enter a valid payment amount.');
+      return;
+    }
+
+    const method = prompt('Payment method:', 'Cash');
+    if (!method) return;
+
+    const paymentType = prompt('Payment type:', balance > amount ? 'Part Payment' : 'Final Payment');
+    if (!paymentType) return;
+
+    const note = prompt('Payment note:', '') || '';
+
+    await api(`/jobs/${selected.jobNo}/payments`, 'POST', {
+      amount,
+      method,
+      paymentType,
+      note
+    });
+
+    alert('Payment recorded.');
+    await loadPayments();
+    await reload();
+  }
+
+  function printReceipt(row) {
+    printCard(`Payment Receipt - ${selected.jobNo}`, [
+      ['Job No', selected.jobNo],
+      ['Customer', selected.customerName || '-'],
+      ['Phone', selected.customerPhone || '-'],
+      ['Vehicle', selected.vehicle || '-'],
+      ['Amount', `$${Number(row.amount || 0).toFixed(2)}`],
+      ['Method', row.method || '-'],
+      ['Type', row.paymentType || '-'],
+      ['Date', row.createdAt || '-'],
+      ['Note', row.note || '-']
+    ]);
+  }
+
+  return (
+    <div className="payment-panel">
+      <div className="payment-head">
+        <div>
+          <h3>Payments</h3>
+          <p>Quote: ${quote.toFixed(2)} • Paid: ${paid.toFixed(2)} • Balance: ${balance.toFixed(2)}</p>
+        </div>
+        <button className="primary" onClick={recordPayment}>Record Payment</button>
+      </div>
+
+      <div className="payment-summary-grid">
+        <div><strong>${quote.toFixed(2)}</strong><span>Quote</span></div>
+        <div><strong>${paid.toFixed(2)}</strong><span>Paid</span></div>
+        <div className={balance > 0 ? 'danger' : 'success'}><strong>${balance.toFixed(2)}</strong><span>Balance</span></div>
+      </div>
+
+      {loading ? (
+        <div className="note-empty">Loading payments...</div>
+      ) : !payments.length ? (
+        <div className="note-empty">No payments recorded yet.</div>
+      ) : (
+        <div className="payment-list">
+          {payments.map(row => (
+            <div className="payment-row" key={row.id}>
+              <div>
+                <strong>${Number(row.amount || 0).toFixed(2)}</strong>
+                <small>{row.paymentType || 'Payment'} • {row.method || '-'}</small>
+              </div>
+
+              <div>
+                <b>{row.createdAt || '-'}</b>
+                <small>{row.note || 'No note'}</small>
+              </div>
+
+              <button onClick={() => printReceipt(row)}>Print Receipt</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PaymentsPage({ data, api, reload }) {
+  const [payments, setPayments] = useState([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  const jobs = [
+    ...(data.bookings || []),
+    ...(data.quotes || []),
+    ...(data.jobs || [])
+  ].filter((row, index, arr) => {
+    const id = row.jobNo || row.ref || `${row.customerPhone}-${row.createdAt}`;
+    return arr.findIndex(x => (x.jobNo || x.ref || `${x.customerPhone}-${x.createdAt}`) === id) === index;
+  });
+
+  async function loadPayments() {
+    setLoading(true);
+    try {
+      const result = await api('/payments');
+      setPayments(result.payments || []);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadPayments();
+  }, []);
+
+  const rows = jobs.map(job => {
+    const jobPayments = payments.filter(p => p.jobNo === job.jobNo);
+    const paid = jobPayments.reduce((t, p) => t + Number(p.amount || 0), 0);
+    const quote = quoteValueOf(job);
+    const balance = Math.max(0, quote - paid);
+
+    return {
+      ...job,
+      paid,
+      quote,
+      balance,
+      paymentCount: jobPayments.length
+    };
+  }).filter(row => matchesSearch(row, search));
+
+  const totalQuote = rows.reduce((t, r) => t + Number(r.quote || 0), 0);
+  const totalPaid = rows.reduce((t, r) => t + Number(r.paid || 0), 0);
+  const totalBalance = rows.reduce((t, r) => t + Number(r.balance || 0), 0);
+
+  async function recordPayment(row) {
+    if (!row?.jobNo) return;
+
+    const amountRaw = prompt(`Payment amount for ${row.jobNo}:`);
+    if (!amountRaw) return;
+
+    const amount = Number(amountRaw);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      alert('Enter a valid payment amount.');
+      return;
+    }
+
+    const method = prompt('Payment method:', 'Cash');
+    if (!method) return;
+
+    const paymentType = prompt('Payment type:', row.balance > amount ? 'Part Payment' : 'Final Payment');
+    if (!paymentType) return;
+
+    const note = prompt('Payment note:', '') || '';
+
+    await api(`/jobs/${row.jobNo}/payments`, 'POST', { amount, method, paymentType, note });
+    alert('Payment recorded.');
+    await loadPayments();
+    await reload();
+  }
+
+  function exportPayments() {
+    const exportRows = rows.map(row => ({
+      ref: row.jobNo || '',
+      customer: row.customerName || '',
+      phone: row.customerPhone || '',
+      vehicle: row.vehicle || '',
+      registration: row.registration || '',
+      service: row.service || '',
+      status: `Quote ${row.quote} | Paid ${row.paid} | Balance ${row.balance}`,
+      updatedAt: row.updatedAt || row.createdAt || ''
+    }));
+
+    downloadCSV('payments-report.csv', exportRows);
+  }
+
+  function printPaymentsReport() {
+    printCard('Payments Report', [
+      ['Records', rows.length],
+      ['Total Quote Value', `$${totalQuote.toFixed(2)}`],
+      ['Total Paid', `$${totalPaid.toFixed(2)}`],
+      ['Total Balance', `$${totalBalance.toFixed(2)}`],
+      ['Generated', new Date().toLocaleString()]
+    ]);
+  }
+
+  return (
+    <Page title="Payments" sub="Track deposits, part payments, final payments and outstanding balances.">
+      <div className="payment-kpis">
+        <SpotlightCard className="payment-kpi"><span>Total Quote</span><strong>${totalQuote.toFixed(2)}</strong></SpotlightCard>
+        <SpotlightCard className="payment-kpi success"><span>Total Paid</span><strong>${totalPaid.toFixed(2)}</strong></SpotlightCard>
+        <SpotlightCard className="payment-kpi danger"><span>Outstanding</span><strong>${totalBalance.toFixed(2)}</strong></SpotlightCard>
+      </div>
+
+      <SpotlightCard className="panel-card">
+        <div className="payments-toolbar">
+          <div className="filter-search">
+            <span>Search Payments</span>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search job, customer, phone, vehicle..." />
+          </div>
+
+          <strong>{rows.length} records</strong>
+        </div>
+
+        <div className="table-tools">
+          <button onClick={loadPayments}>{loading ? 'Refreshing...' : 'Refresh Payments'}</button>
+          <button onClick={exportPayments}>Export Payments CSV</button>
+          <button onClick={printPaymentsReport}>Print Payments Report</button>
+        </div>
+
+        {!rows.length ? (
+          <EmptyState title="No payment records found" copy="Set quote amounts and record payments from jobs." />
+        ) : (
+          <div className="payments-list">
+            {rows.map(row => (
+              <div className="payments-record" key={row.jobNo || row.ref}>
+                <div>
+                  <strong>{row.jobNo || row.ref}</strong>
+                  <small>{row.customerName || row.customerPhone || '-'} • {row.vehicle || '-'}</small>
+                </div>
+
+                <div><b>${Number(row.quote || 0).toFixed(2)}</b><small>Quote</small></div>
+                <div><b>${Number(row.paid || 0).toFixed(2)}</b><small>Paid</small></div>
+                <div className={row.balance > 0 ? 'danger' : 'success'}><b>${Number(row.balance || 0).toFixed(2)}</b><small>Balance</small></div>
+
+                <button className="primary" onClick={() => recordPayment(row)}>Record Payment</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </SpotlightCard>
+
+      <MadeBy />
+    </Page>
+  );
+}
+
+
+
+function taskIsOverdue(task) {
+  if (!task?.dueDate || task.status === 'done') return false;
+  const today = new Date().toISOString().slice(0, 10);
+  return String(task.dueDate) < today;
+}
+
+
+function TaskPanel({ api, selected, reload }) {
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  async function loadTasks() {
+    if (!selected?.jobNo) {
+      setTasks([]);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await api(`/tasks?ref=${encodeURIComponent(selected.jobNo)}`);
+      setTasks(result.tasks || []);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadTasks();
+  }, [selected?.jobNo]);
+
+  async function createTask() {
+    if (!selected?.jobNo) return;
+
+    const title = prompt('Task / follow-up title:', 'Follow up with customer');
+    if (!title) return;
+
+    const taskType = prompt('Task type:', 'Follow Up') || 'Follow Up';
+    const dueDate = prompt('Due date YYYY-MM-DD:', new Date().toISOString().slice(0, 10)) || '';
+    const dueTime = prompt('Due time HH:MM:', '') || '';
+    const assignedTo = prompt('Assigned to:', selected.fitter || selected.assignedTo || selected.data?.fitter || '') || '';
+    const note = prompt('Task note:', '') || '';
+
+    await api('/tasks', 'POST', {
+      ref: selected.jobNo,
+      customerPhone: selected.customerPhone,
+      title,
+      taskType,
+      assignedTo,
+      dueDate,
+      dueTime,
+      note
+    });
+
+    alert('Task created.');
+    await loadTasks();
+    await reload();
+  }
+
+  async function setTaskStatus(task, status) {
+    await api(`/tasks/${task.id}/status`, 'POST', { status });
+    await loadTasks();
+    await reload();
+  }
+
+  async function remindCustomer(task) {
+    await sendTaskCustomerReminder(api, task);
+    await loadTasks();
+  }
+
+  async function remindTeam(task) {
+    await sendTaskTeamReminder(api, task);
+    await loadTasks();
+  }
+
+  return (
+    <div className="task-panel">
+      <div className="task-head">
+        <div>
+          <h3>Tasks / Follow-ups</h3>
+          <p>{tasks.length} task(s) linked to this record</p>
+        </div>
+        <button className="primary" onClick={createTask}>Create Task</button>
+      </div>
+
+      {loading ? (
+        <div className="note-empty">Loading tasks...</div>
+      ) : !tasks.length ? (
+        <div className="note-empty">No follow-up tasks yet.</div>
+      ) : (
+        <div className="task-list">
+          {tasks.map(task => (
+            <div className={`task-row ${task.status === 'done' ? 'done' : ''} ${taskIsOverdue(task) ? 'overdue' : ''}`} key={task.id}>
+              <div>
+                <strong>{task.title}</strong>
+                <small>{task.taskType || 'Task'} • {task.dueDate || 'No date'} {task.dueTime || ''}</small>
+                {task.note && <p>{task.note}</p>}
+              </div>
+
+              <div>
+                <b>{task.assignedTo || 'Unassigned'}</b>
+                <small>{task.status || 'open'}</small>
+              </div>
+
+              <div className="task-actions">
+                {task.customerPhone && <button onClick={() => remindCustomer(task)}><MessageCircle size={14} /> Customer</button>}
+                {task.assignedTo && <button onClick={() => remindTeam(task)}><MessageCircle size={14} /> Team</button>}
+                {task.status === 'done' ? (
+                  <button onClick={() => setTaskStatus(task, 'open')}>Reopen</button>
+                ) : (
+                  <button className="primary" onClick={() => setTaskStatus(task, 'done')}>Mark Done</button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+function TasksPage({ data, api, reload }) {
+  const [tasks, setTasks] = useState([]);
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState('open');
+  const [loading, setLoading] = useState(true);
+
+  async function loadTasks() {
+    setLoading(true);
+    try {
+      const result = await api('/tasks');
+      setTasks(result.tasks || []);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadTasks();
+  }, []);
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  const filteredTasks = tasks
+    .filter(task => {
+      if (view === 'all') return true;
+      if (view === 'done') return task.status === 'done';
+      if (view === 'overdue') return taskIsOverdue(task);
+      if (view === 'today') return task.status !== 'done' && String(task.dueDate || '') === today;
+      return task.status !== 'done';
+    })
+    .filter(task => matchesSearch(task, search));
+
+  const openCount = tasks.filter(t => t.status !== 'done').length;
+  const todayCount = tasks.filter(t => t.status !== 'done' && String(t.dueDate || '') === today).length;
+  const overdueCount = tasks.filter(taskIsOverdue).length;
+
+  async function createGeneralTask() {
+    const title = prompt('Task title:');
+    if (!title) return;
+
+    const ref = prompt('Reference / job no optional:', '') || '';
+    const customerPhone = prompt('Customer phone optional:', '') || '';
+    const taskType = prompt('Task type:', 'Follow Up') || 'Follow Up';
+    const dueDate = prompt('Due date YYYY-MM-DD:', today) || '';
+    const dueTime = prompt('Due time HH:MM:', '') || '';
+    const assignedTo = prompt('Assigned to:', '') || '';
+    const note = prompt('Task note:', '') || '';
+
+    await api('/tasks', 'POST', { ref, customerPhone, title, taskType, dueDate, dueTime, assignedTo, note });
+    alert('Task created.');
+    await loadTasks();
+    await reload();
+  }
+
+  async function setTaskStatus(task, status) {
+    await api(`/tasks/${task.id}/status`, 'POST', { status });
+    await loadTasks();
+    await reload();
+  }
+
+  async function remindCustomer(task) {
+    await sendTaskCustomerReminder(api, task);
+    await loadTasks();
+  }
+
+  async function remindTeam(task) {
+    await sendTaskTeamReminder(api, task);
+    await loadTasks();
+  }
+
+  async function remindAllDueToday() {
+    const due = filteredTasks.filter(t => t.status !== 'done' && String(t.dueDate || '') === today);
+
+    if (!due.length) {
+      alert('No due-today tasks in the current view.');
+      return;
+    }
+
+    if (!confirm(`Send reminders one-by-one for ${due.length} due-today task(s)?`)) return;
+
+    for (const task of due) {
+      if (task.customerPhone) await sendTaskCustomerReminder(api, task);
+    }
+
+    await loadTasks();
+  }
+
+  function exportTasks() {
+    const exportRows = filteredTasks.map(task => ({
+      ref: task.ref || `TASK-${task.id}`,
+      customer: task.title || '',
+      phone: task.customerPhone || '',
+      vehicle: task.taskType || '',
+      registration: task.assignedTo || '',
+      service: task.note || '',
+      status: task.status || 'open',
+      updatedAt: `${task.dueDate || ''} ${task.dueTime || ''}`
+    }));
+
+    downloadCSV('tasks-followups-export.csv', exportRows);
+  }
+
+  function printTaskReport() {
+    printCard('Tasks / Follow-ups Report', [
+      ['Open Tasks', openCount],
+      ['Due Today', todayCount],
+      ['Overdue', overdueCount],
+      ['Filtered Records', filteredTasks.length],
+      ['Generated', new Date().toLocaleString()]
+    ]);
+  }
+
+  return (
+    <Page title="Tasks" sub="Follow-ups, reminders and daily admin tasks for the workshop.">
+      <div className="task-kpis">
+        <SpotlightCard className="task-kpi"><span>Open</span><strong>{openCount}</strong></SpotlightCard>
+        <SpotlightCard className="task-kpi"><span>Today</span><strong>{todayCount}</strong></SpotlightCard>
+        <SpotlightCard className="task-kpi danger"><span>Overdue</span><strong>{overdueCount}</strong></SpotlightCard>
+      </div>
+
+      <SpotlightCard className="panel-card">
+        <div className="tasks-toolbar">
+          <div className="filter-search">
+            <span>Search Tasks</span>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search title, ref, phone, assignee, note..." />
+          </div>
+
+          <div className="filter-status">
+            <span>View</span>
+            <select value={view} onChange={e => setView(e.target.value)}>
+              <option value="open">Open</option>
+              <option value="today">Today</option>
+              <option value="overdue">Overdue</option>
+              <option value="done">Done</option>
+              <option value="all">All</option>
+            </select>
+          </div>
+
+          <strong>{filteredTasks.length} tasks</strong>
+        </div>
+
+        <div className="table-tools">
+          <button className="primary" onClick={createGeneralTask}>Create Task</button>
+          <button onClick={loadTasks}>{loading ? 'Refreshing...' : 'Refresh Tasks'}</button>
+          <button onClick={remindAllDueToday}>Remind Due Today</button>
+          <button onClick={exportTasks}>Export Tasks CSV</button>
+          <button onClick={printTaskReport}>Print Task Report</button>
+        </div>
+
+        {loading ? (
+          <EmptyState title="Loading tasks..." />
+        ) : !filteredTasks.length ? (
+          <EmptyState title="No tasks found" copy="Create follow-ups from here or from a job detail page." />
+        ) : (
+          <div className="tasks-list">
+            {filteredTasks.map(task => (
+              <div className={`task-record ${task.status === 'done' ? 'done' : ''} ${taskIsOverdue(task) ? 'overdue' : ''}`} key={task.id}>
+                <div>
+                  <strong>{task.title}</strong>
+                  <small>{task.ref || 'No ref'} • {task.customerPhone || 'No phone'}</small>
+                </div>
+
+                <div>
+                  <b>{task.dueDate || '-'}</b>
+                  <small>{task.dueTime || 'No time'}</small>
+                </div>
+
+                <div>
+                  <b>{task.assignedTo || 'Unassigned'}</b>
+                  <small>{task.taskType || 'Task'}</small>
+                </div>
+
+                <Badge>{task.status || 'open'}</Badge>
+
+                <div className="task-actions">
+                  {task.customerPhone && <button onClick={() => remindCustomer(task)}><MessageCircle size={14} /> Customer</button>}
+                  {task.assignedTo && <button onClick={() => remindTeam(task)}><MessageCircle size={14} /> Team</button>}
+                  {task.status === 'done' ? (
+                    <button onClick={() => setTaskStatus(task, 'open')}>Reopen</button>
+                  ) : (
+                    <button className="primary" onClick={() => setTaskStatus(task, 'done')}>Done</button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </SpotlightCard>
+
+      <MadeBy />
+    </Page>
+  );
+}
+
+
+function docUrl(row) {
+  return row?.url || row?.fileUrl || row?.pdfUrl || row?.downloadUrl || row?.path || row?.href || '';
+}
+
+function docType(row) {
+  const text = `${row?.type || ''} ${row?.kind || ''} ${row?.name || ''} ${row?.filename || ''} ${docUrl(row)}`.toLowerCase();
+
+  if (text.includes('pdf') || text.includes('claim')) return 'PDF / Claim';
+  if (text.includes('licence') || text.includes('license')) return 'Licence';
+  if (text.includes('id')) return 'ID';
+  if (text.includes('damage') || text.includes('glass') || text.includes('photo') || text.includes('image') || text.includes('.jpg') || text.includes('.jpeg') || text.includes('.png')) return 'Photo';
+  return row?.type || row?.kind || 'Document';
+}
+
+function isImageDoc(row) {
+  const url = docUrl(row).toLowerCase();
+  const text = `${row?.type || ''} ${row?.kind || ''}`.toLowerCase();
+  return text.includes('image') || url.endsWith('.jpg') || url.endsWith('.jpeg') || url.endsWith('.png') || url.endsWith('.webp');
+}
+
+function DocumentsPage({ data, api }) {
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState('all');
+  const [selected, setSelected] = useState(null);
+  const [liveDocs, setLiveDocs] = useState(data.documents || []);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadDocs() {
+      try {
+        if (!api) return;
+        const result = await api('/documents');
+        if (alive) setLiveDocs(result.documents || []);
+      } catch {
+        if (alive) setLiveDocs(data.documents || []);
+      }
+    }
+
+    loadDocs();
+    return () => { alive = false; };
+  }, [api, data.documents]);
+
+  const docs = (liveDocs || data.documents || []).map((doc, index) => ({
+    ...doc,
+    _id: doc.id || doc.ref || doc.url || doc.fileUrl || `DOC-${index + 1}`,
+    _type: docType(doc),
+    _url: docUrl(doc)
+  }));
+
+  const filteredDocs = docs
+    .filter(row => {
+      if (view === 'all') return true;
+      if (view === 'photos') return row._type === 'Photo';
+      if (view === 'pdfs') return row._type === 'PDF / Claim';
+      if (view === 'ids') return row._type === 'ID' || row._type === 'Licence';
+      return true;
+    })
+    .filter(row => matchesSearch(row, search));
+
+  useEffect(() => {
+    if (filteredDocs.length && !filteredDocs.some(d => d._id === selected?._id)) {
+      setSelected(filteredDocs[0]);
+    }
+    if (!filteredDocs.length) setSelected(null);
+  }, [search, view, data.documents]);
+
+  const photoCount = docs.filter(isImageDoc).length;
+  const pdfCount = docs.filter(d => d._type === 'PDF / Claim').length;
+  const idCount = docs.filter(d => d._type === 'ID' || d._type === 'Licence').length;
+
+  function exportDocuments() {
+    const exportRows = filteredDocs.map(row => ({
+      ref: row.claimNo || row.jobNo || row.ref || row._id,
+      customer: row.customerName || row.name || '',
+      phone: row.customerPhone || row.phone || '',
+      vehicle: row.vehicle || '',
+      registration: row.registration || row.reg || '',
+      service: row._type || '',
+      status: row._url || '',
+      updatedAt: row.createdAt || row.updatedAt || ''
+    }));
+
+    downloadCSV('documents-library-export.csv', exportRows);
+  }
+
+  function printDocumentSummary() {
+    printCard('Documents Library Summary', [
+      ['Total Documents', docs.length],
+      ['Photos', photoCount],
+      ['Claim PDFs', pdfCount],
+      ['ID / Licence Docs', idCount],
+      ['Filtered Records', filteredDocs.length],
+      ['Generated', new Date().toLocaleString()]
+    ]);
+  }
+
+  return (
+    <Page title="Documents" sub="Search and manage uploaded customer photos, IDs, licences, claim PDFs and media files.">
+      <div className="documents-summary">
+        <SpotlightCard className="doc-mini-card">
+          <span>Total Documents</span>
+          <strong>{docs.length}</strong>
+          <small>files captured</small>
+        </SpotlightCard>
+        <SpotlightCard className="doc-mini-card">
+          <span>Photos</span>
+          <strong>{photoCount}</strong>
+          <small>images / uploads</small>
+        </SpotlightCard>
+        <SpotlightCard className="doc-mini-card">
+          <span>Claim PDFs</span>
+          <strong>{pdfCount}</strong>
+          <small>generated forms</small>
+        </SpotlightCard>
+        <SpotlightCard className="doc-mini-card">
+          <span>ID / Licence</span>
+          <strong>{idCount}</strong>
+          <small>verification docs</small>
+        </SpotlightCard>
+      </div>
+
+      <div className="split">
+        <SpotlightCard className="panel-card">
+          <SectionHead title="Document Library" />
+
+          <div className="documents-toolbar">
+            <div className="filter-search">
+              <span>Search Documents</span>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search customer, phone, claim, vehicle, file type..." />
+            </div>
+
+            <div className="filter-status">
+              <span>View</span>
+              <select value={view} onChange={e => setView(e.target.value)}>
+                <option value="all">All</option>
+                <option value="photos">Photos</option>
+                <option value="pdfs">Claim PDFs</option>
+                <option value="ids">ID / Licence</option>
+              </select>
+            </div>
+
+            <strong>{filteredDocs.length} files</strong>
+          </div>
+
+          <div className="table-tools">
+            <button onClick={exportDocuments}>Export Documents CSV</button>
+            <button onClick={printDocumentSummary}>Print Summary</button>
+          </div>
+
+          {!filteredDocs.length ? (
+            <EmptyState title="No documents found" copy="Uploaded files from claims and customers will appear here." />
+          ) : (
+            <div className="documents-list">
+              {filteredDocs.map(row => (
+                <button key={row._id} onClick={() => setSelected(row)} className={selected?._id === row._id ? 'active' : ''}>
+                  <div className="doc-icon">
+                    <FileText size={18} />
+                  </div>
+
+                  <div>
+                    <strong>{row.filename || row.name || row.title || row.claimNo || row.jobNo || 'Document'}</strong>
+                    <small>{row.customerName || row.customerPhone || row.phone || 'Unknown customer'} • {row.claimNo || row.jobNo || row.ref || 'No ref'}</small>
+                  </div>
+
+                  <Badge>{row._type}</Badge>
+                </button>
+              ))}
+            </div>
+          )}
+        </SpotlightCard>
+
+        <SpotlightCard className="panel-card sticky">
+          {!selected ? (
+            <EmptyState title="No document selected" />
+          ) : (
+            <>
+              <DetailHead label="Document" refNo={selected.claimNo || selected.jobNo || selected.ref || selected._id} status={selected._type} />
+
+              <InfoGrid items={[
+                ['Customer', selected.customerName || selected.name || '-'],
+                ['Phone', selected.customerPhone || selected.phone || '-'],
+                ['Claim No', selected.claimNo || '-'],
+                ['Job No', selected.jobNo || '-'],
+                ['Vehicle', selected.vehicle || '-'],
+                ['Registration', selected.registration || selected.reg || '-'],
+                ['File Type', selected._type],
+                ['Created', selected.createdAt || '-']
+              ]} />
+
+              {selected._url ? (
+                <div className="document-preview">
+                  {isImageDoc(selected) ? (
+                    <img src={selected._url} alt="Document preview" />
+                  ) : (
+                    <div className="document-preview-box">
+                      <FileText size={34} />
+                      <strong>{selected.filename || selected.name || 'Document file'}</strong>
+                      <small>{selected._type}</small>
+                    </div>
+                  )}
+
+                  <div className="actions">
+                    <a href={selected._url} target="_blank" rel="noreferrer">Open Document <ExternalLink size={14} /></a>
+                    <button onClick={() => navigator.clipboard?.writeText(selected._url).then(() => alert('Document link copied.'))}>Copy Link</button>
+                  </div>
+                </div>
+              ) : (
+                <EmptyState title="No document link available" />
+              )}
+            </>
+          )}
+        </SpotlightCard>
+      </div>
+
+      <MadeBy />
+    </Page>
+  );
+}
+
+
+
+function printCommercialDoc(title, rows, totals = []) {
+  const tableRows = rows.map(([k, v]) => `
+    <tr>
+      <th>${String(k)}</th>
+      <td>${String(v ?? '-')}</td>
+    </tr>
+  `).join('');
+
+  const totalRows = totals.map(([k, v]) => `
+    <div class="total-row">
+      <span>${String(k)}</span>
+      <strong>${String(v)}</strong>
+    </div>
+  `).join('');
+
+  const html = `
+    <!doctype html>
+    <html>
+      <head>
+        <title>${title}</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 38px; color: #101828; }
+          .top { display:flex; justify-content:space-between; gap:24px; border-bottom:4px solid #1268ff; padding-bottom:22px; margin-bottom:28px; }
+          h1 { margin:0; font-size:34px; letter-spacing:-.03em; }
+          h2 { margin:0 0 8px; font-size:15px; text-transform:uppercase; letter-spacing:.08em; color:#1268ff; }
+          p { margin:5px 0; color:#667085; }
+          .brand { text-align:right; }
+          table { width:100%; border-collapse:collapse; margin-top:18px; }
+          th, td { border:1px solid #d0d5dd; padding:13px; text-align:left; vertical-align:top; }
+          th { width:34%; background:#f2f4f7; }
+          .totals { margin-top:24px; margin-left:auto; width:340px; border:1px solid #d0d5dd; border-radius:12px; overflow:hidden; }
+          .total-row { display:flex; justify-content:space-between; gap:16px; padding:13px 15px; border-bottom:1px solid #d0d5dd; }
+          .total-row:last-child { border-bottom:0; background:#f2f4f7; }
+          .footer { margin-top:42px; border-top:1px solid #d0d5dd; padding-top:14px; color:#667085; font-size:12px; }
+          .sign { margin-top:48px; display:flex; gap:50px; }
+          .sign div { flex:1; border-top:1px solid #98a2b3; padding-top:9px; color:#667085; font-size:12px; }
+        </style>
+      </head>
+      <body>
+        <div class="top">
+          <div>
+            <h2>Auto Glass Workshop</h2>
+            <h1>${title}</h1>
+            <p>Generated: ${new Date().toLocaleString()}</p>
+          </div>
+          <div class="brand">
+            <h2>VisionCo Dashboard</h2>
+            <p>Windscreen Automation Dashboard</p>
+            <p>Professional workshop document</p>
+          </div>
+        </div>
+
+        <table>${tableRows}</table>
+
+        ${totals.length ? `<div class="totals">${totalRows}</div>` : ''}
+
+        <div class="sign">
+          <div>Customer Signature</div>
+          <div>Authorised Workshop Signature</div>
+        </div>
+
+        <div class="footer">
+          This document was generated from the VisionCo Windscreen Automation Dashboard.
+        </div>
+
+        <script>window.print();</script>
+      </body>
+    </html>
+  `;
+
+  const w = window.open('', '_blank');
+  if (!w) {
+    alert('Popup blocked. Please allow popups for this dashboard.');
+    return;
+  }
+
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+}
+
+function Dashboard({ data, setActive }) {
+  const s = data.summary || {};
+
+  return (
+    <Page title="Dashboard" sub="The main overview for today.">
+      <div className="stats-grid">
+        <StatCard label="Bookings" value={s.bookings || 0} sub="normal customer bookings" icon={CalendarCheck} />
+        <StatCard label="Quotes" value={s.quotes || 0} sub="pricing requests" icon={FileText} />
+        <StatCard label="Claims" value={s.claims || 0} sub={`${s.pendingClaims || 0} pending`} icon={ShieldCheck} />
+        <StatCard label="Customers" value={s.customers || 0} sub="from WhatsApp" icon={Users} />
+      </div>
+
+      <div className="grid2">
+        <SpotlightCard className="panel-card">
+          <SectionHead title="Latest Insurance Claims" action="Open Claims" onClick={() => setActive('claims')} />
+          <RecordList rows={(data.claims || []).slice(0, 7)} onSelect={() => setActive('claims')} />
+        </SpotlightCard>
+
+        <SpotlightCard className="panel-card">
+          <SectionHead title="Latest Customers" action="Open Customers" onClick={() => setActive('customers')} />
+          <CustomerList rows={(data.customers || []).slice(0, 7)} />
+        </SpotlightCard>
+      </div>
+
+      <MadeBy />
+    </Page>
+  );
+}
+
+
+
+
+
+function WorkPage({ title, sub, rows, type, api, reload }) {
+  const [selected, setSelected] = useState(rows?.[0] || null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [notesTick, setNotesTick] = useState(0);
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('all');
+
+  const endpoint = type === 'Booking' ? '/bookings' : type === 'Quote' ? '/quotes' : '/jobs';
+  const action = type === 'Booking' ? 'Create Booking' : type === 'Quote' ? 'Create Quote' : 'Create Job';
+
+  const filteredRows = (rows || []).filter(r => matchesSearch(r, search) && matchesStatus(r, status));
+
+  useEffect(() => {
+    if (filteredRows.length && !filteredRows.some(r => r.jobNo === selected?.jobNo)) {
+      setSelected(filteredRows[0]);
+    }
+    if (!filteredRows.length) setSelected(null);
+  }, [search, status, rows]);
+
+  async function createRecord(form) {
+    await api(endpoint, 'POST', form);
+    setModalOpen(false);
+    alert(`${type} saved successfully.`);
+    await reload();
+  }
+
+  async function updateJob(status) {
+    if (!selected?.jobNo) return;
+    await api(`/jobs/${selected.jobNo}/status`, 'POST', { status });
+    setNotesTick(x => x + 1);
+    await reload();
+  }
+
+  async function addNote() {
+    if (!selected?.jobNo) return;
+    const note = prompt('Internal note:');
+    if (!note) return;
+    await api('/notes', 'POST', { ref: selected.jobNo, type: 'internal', note });
+    setNotesTick(x => x + 1);
+    alert('Note saved.');
+    await reload();
+  }
+
+  async function workflow(action, value) {
+    if (!selected?.jobNo) return;
+    await api(`/jobs/${selected.jobNo}/workflow`, 'POST', { action, value });
+    setNotesTick(x => x + 1);
+    await reload();
+  }
+
+  async function setQuoteAmount() {
+    const amount = prompt('Quote amount in USD:');
+    if (!amount) return;
+    await workflow('set_quote_amount', amount);
+  }
+
+  async function assignFitter() {
+    const fitter = await chooseTeamFitter(api);
+    if (!fitter) return;
+    await workflow('assign_fitter', fitter);
+  }
+
+  async function sendCustomerUpdate(kind) {
+    if (!selected?.customerPhone || !selected?.jobNo) {
+      alert('No customer phone number found on this record.');
+      return;
+    }
+
+    const name = selected.customerName || 'there';
+    const vehicle = selected.vehicle || 'your vehicle';
+    const service = selected.service || 'your auto glass service';
+    const quoteAmount = selected?.quoteAmount || selected?.quote_amount || selected?.data?.quoteAmount;
+
+    const templates = {
+      booking: `Good day ${name}, your booking for ${service} on ${vehicle} has been received. Our team will keep you updated. Thank you.`,
+      quote: `Good day ${name}, your quote for ${service} on ${vehicle}${quoteAmount ? ` is $${quoteAmount}` : ' is being prepared'}. Please reply if you would like to proceed.`,
+      started: `Good day ${name}, work has started on ${vehicle}. We will update you once the job is complete.`,
+      completed: `Good day ${name}, your ${service} for ${vehicle} has been completed. Thank you for choosing us.`,
+      payment: `Good day ${name}, this is a payment reminder for your ${service} on ${vehicle}. Please let us know once payment has been made. Thank you.`
+    };
+
+    const msg = prompt('Edit WhatsApp message before sending:', templates[kind] || '');
+    if (!msg) return;
+
+    await api('/message', 'POST', { phone: selected.customerPhone, message: msg });
+    await api('/notes', 'POST', { ref: selected.jobNo, type: 'whatsapp_update', note: `WhatsApp update sent: ${msg}` });
+    setNotesTick(x => x + 1);
+    alert('WhatsApp message sent.');
+  }
+
+  const quoteAmount = selected?.quoteAmount || selected?.quote_amount || selected?.data?.quoteAmount;
+  const fitter = selected?.fitter || selected?.assignedTo || selected?.assigned_to || selected?.data?.fitter;
+  const invoiceStatus = selected?.invoiceStatus || selected?.invoice_status || selected?.data?.invoiceStatus;
+  const bookingDate = selected?.bookingDate || selected?.booking_date || selected?.data?.bookingDate;
+  const bookingTime = selected?.bookingTime || selected?.booking_time || selected?.data?.bookingTime;
+  const priority = selected?.priority || selected?.data?.priority;
+
+  function printJobCard() {
+    if (!selected) return;
+    printCard(`${type} Card - ${selected.ref || selected.jobNo}`, [
+      ['Reference', selected.ref || selected.jobNo],
+      ['Customer', selected.customerName],
+      ['Phone', selected.customerPhone],
+      ['Vehicle', selected.vehicle],
+      ['Registration', selected.registration],
+      ['Service', selected.service],
+      ['Location', selected.location],
+      ['Booking Date', bookingDate || '-'],
+      ['Booking Time', bookingTime || '-'],
+      ['Priority', priority || '-'],
+      ['Quote Amount', quoteAmount ? `$${quoteAmount}` : '-'],
+      ['Fitter', fitter || '-'],
+      ['Invoice', invoiceStatus || '-'],
+      ['Status', selected.publicStatus || selected.status]
+    ]);
+  }
+
+  function printFormalQuote() {
+    if (!selected) return;
+
+    const amount = Number(quoteAmount || 0);
+
+    printCommercialDoc(`Formal Quote - ${selected.ref || selected.jobNo}`, [
+      ['Quote Ref', selected.ref || selected.jobNo],
+      ['Customer', selected.customerName || '-'],
+      ['Phone', selected.customerPhone || '-'],
+      ['Vehicle', selected.vehicle || '-'],
+      ['Registration', selected.registration || '-'],
+      ['Service', selected.service || '-'],
+      ['Location', selected.location || '-'],
+      ['Booking Date', bookingDate || '-'],
+      ['Booking Time', bookingTime || '-'],
+      ['Technician / Fitter', fitter || '-'],
+      ['Quote Status', selected.publicStatus || selected.status || '-'],
+      ['Notes', selected.notes || selected.data?.notes || '-']
+    ], [
+      ['Quoted Amount', `$${amount.toFixed(2)}`],
+      ['Validity', '7 days'],
+      ['Total Due', `$${amount.toFixed(2)}`]
+    ]);
+  }
+
+  function printInvoiceDoc() {
+    if (!selected) return;
+
+    const amount = Number(quoteAmount || 0);
+
+    printCommercialDoc(`Invoice - ${selected.ref || selected.jobNo}`, [
+      ['Invoice Ref', selected.ref || selected.jobNo],
+      ['Customer', selected.customerName || '-'],
+      ['Phone', selected.customerPhone || '-'],
+      ['Vehicle', selected.vehicle || '-'],
+      ['Registration', selected.registration || '-'],
+      ['Service', selected.service || '-'],
+      ['Location', selected.location || '-'],
+      ['Technician / Fitter', fitter || '-'],
+      ['Invoice Status', invoiceStatus || selected.publicStatus || selected.status || '-']
+    ], [
+      ['Subtotal', `$${amount.toFixed(2)}`],
+      ['Paid / Status', invoiceStatus || '-'],
+      ['Total', `$${amount.toFixed(2)}`]
+    ]);
+  }
+
+  async function sendQuoteAmountMessage() {
+    if (!selected?.customerPhone) {
+      alert('No customer phone number found on this record.');
+      return;
+    }
+
+    const amount = Number(quoteAmount || 0);
+    const msg = prompt(
+      'Edit quote message before sending:',
+      `Good day ${selected.customerName || 'there'}, your quote for ${selected.service || 'the requested service'} on ${selected.vehicle || 'your vehicle'} is $${amount.toFixed(2)}. Please reply if you would like us to proceed.`
+    );
+
+    if (!msg) return;
+
+    await api('/message', 'POST', { phone: selected.customerPhone, message: msg });
+
+    if (selected?.jobNo) {
+      await api('/notes', 'POST', {
+        ref: selected.jobNo,
+        type: 'quote_whatsapp',
+        note: `Quote message sent: ${msg}`
+      });
+      setNotesTick(x => x + 1);
+    }
+
+    alert('Quote message sent.');
+  }
+
+  async function sendInvoiceMessage() {
+    if (!selected?.customerPhone) {
+      alert('No customer phone number found on this record.');
+      return;
+    }
+
+    const amount = Number(quoteAmount || 0);
+    const msg = prompt(
+      'Edit invoice/payment request before sending:',
+      `Good day ${selected.customerName || 'there'}, your invoice for ${selected.service || 'the completed service'} on ${selected.vehicle || 'your vehicle'} is $${amount.toFixed(2)}. Please let us know once payment has been made. Thank you.`
+    );
+
+    if (!msg) return;
+
+    await api('/message', 'POST', { phone: selected.customerPhone, message: msg });
+
+    if (selected?.jobNo) {
+      await api('/notes', 'POST', {
+        ref: selected.jobNo,
+        type: 'invoice_whatsapp',
+        note: `Invoice/payment request sent: ${msg}`
+      });
+      setNotesTick(x => x + 1);
+    }
+
+    alert('Invoice message sent.');
+  }
+
+  return (
+    <Page title={title} sub={sub}>
+      <div className="split">
+        <SpotlightCard className="panel-card">
+          <SectionHead title={title} action={action} onClick={() => setModalOpen(true)} />
+          <FilterBar search={search} setSearch={setSearch} status={status} setStatus={setStatus} count={filteredRows.length} label={title.toLowerCase()} />
+          <TableTools onExport={() => downloadCSV(`${title.toLowerCase()}-export.csv`, filteredRows)} />
+          <RecordList rows={filteredRows} onSelect={setSelected} selected={selected} />
+        </SpotlightCard>
+
+        <SpotlightCard className="panel-card sticky">
+          {!selected ? (
+            <EmptyState title={`No ${title.toLowerCase()} found`} copy="Try changing the search or status filter." />
+          ) : (
+            <>
+              <DetailHead label={type} refNo={selected.ref || selected.jobNo} status={selected.publicStatus} />
+
+              <InfoGrid items={[
+                ['Customer', selected.customerName],
+                ['Phone', selected.customerPhone],
+                ['Vehicle', selected.vehicle],
+                ['Registration', selected.registration],
+                ['Service', selected.service],
+                ['Location', selected.location],
+                ['Booking Date', bookingDate || '-'],
+                ['Booking Time', bookingTime || '-'],
+                ['Priority', priority || '-'],
+                ['Quote Amount', quoteAmount ? `$${quoteAmount}` : '-'],
+                ['Fitter', fitter || '-'],
+                ['Invoice', invoiceStatus || '-']
+              ]} />
+
+              {selected.jobNo && (
+                <>
+                  <div className="workflow-panel">
+                    <h3>Workflow Actions</h3>
+                    <div className="actions">
+                      <button className="primary" onClick={setQuoteAmount}>Set Quote Amount</button>
+                      <button className="primary" onClick={assignFitter}>Assign Fitter</button>
+                      <button onClick={() => workflow('convert_to_job')}>Convert to Job</button>
+                      <button onClick={() => workflow('invoice_sent')}>Invoice Sent</button>
+                      <button onClick={() => workflow('paid')}>Mark Paid</button>
+                      <button onClick={() => updateJob('in_progress')}>In Progress</button>
+                      <button onClick={() => updateJob('completed')}>Completed</button>
+                      <button onClick={() => updateJob('waiting_parts')}>Waiting Parts</button>
+                      <button onClick={() => updateJob('closed')}>Closed</button>
+                      <button onClick={printJobCard}>Print Job Card</button>
+                      <button onClick={printFormalQuote}>Print Formal Quote</button>
+                      <button onClick={printInvoiceDoc}>Print Invoice</button>
+                      <button onClick={sendQuoteAmountMessage}><MessageCircle size={15} /> Send Quote</button>
+                      <button onClick={sendInvoiceMessage}><MessageCircle size={15} /> Send Invoice</button>
+                      <button onClick={addNote}>Add Internal Note</button>
+                    </div>
+                  </div>
+
+                  <div className="workflow-panel customer-updates-panel">
+                    <h3>Customer WhatsApp Updates</h3>
+                    <div className="actions">
+                      <button className="primary" onClick={() => sendCustomerUpdate('booking')}><MessageCircle size={15} /> Booking Confirmation</button>
+                      <button className="primary" onClick={() => sendCustomerUpdate('quote')}><MessageCircle size={15} /> Send Quote Message</button>
+                      <button onClick={() => sendCustomerUpdate('started')}><MessageCircle size={15} /> Job Started</button>
+                      <button onClick={() => sendCustomerUpdate('completed')}><MessageCircle size={15} /> Job Completed</button>
+                      <button onClick={() => sendCustomerUpdate('payment')}><MessageCircle size={15} /> Payment Reminder</button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <JobPartsPanel api={api} selected={selected} reload={reload} />
+
+              <PaymentPanel api={api} selected={selected} reload={reload} />
+
+              <TaskPanel api={api} selected={selected} reload={reload} />
+
+              <NotesTimeline api={api} refNo={selected.jobNo} refreshKey={notesTick} />
+            </>
+          )}
+        </SpotlightCard>
+      </div>
+
+      {modalOpen && (
+        <FormModal
+          title={action}
+          fields={JOB_FIELDS}
+          onClose={() => setModalOpen(false)}
+          onSubmit={createRecord}
+        />
+      )}
+
+      <MadeBy />
+    </Page>
+  );
+}
+
+
+
+function Claims({ data, api, reload }) {
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('all');
+  const [selectedId, setSelectedId] = useState('');
+
+  const claims = data.claims || data.insuranceClaims || [];
+
+  function value(row, keys, fallback = '-') {
+    for (const key of keys) {
+      const v = key.split('.').reduce((obj, part) => obj?.[part], row);
+      if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+    }
+    return fallback;
+  }
+
+  function claimKey(row) {
+    return String(value(row, ['claimNo', 'claim_no', 'ref', 'id'], 'claim'));
+  }
+
+  function labelStatus(row) {
+    return value(row, ['publicStatus', 'status'], 'Pending');
+  }
+
+  const statuses = Array.from(new Set(claims.map(labelStatus).filter(Boolean))).sort();
+
+  const filteredClaims = claims.filter(row => {
+    const q = search.trim().toLowerCase();
+    const matchesText = !q || JSON.stringify(row || {}).toLowerCase().includes(q);
+    const matchesState = status === 'all' || String(labelStatus(row)).toLowerCase() === status.toLowerCase();
+    return matchesText && matchesState;
+  });
+
+  const selected =
+    claims.find(row => claimKey(row) === selectedId) ||
+    filteredClaims[0] ||
+    claims[0] ||
+    null;
+
+  function exportClaims() {
+    downloadCSV('insurance-claims.csv', filteredClaims);
+  }
+
+  function Icon({ type }) {
+    if (type === 'search') {
+      return <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M20 20l-3.5-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>;
+    }
+
+    if (type === 'shield') {
+      return <svg viewBox="0 0 24 24"><path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7l7-4z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/><path d="M9 12l2 2 4-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+    }
+
+    if (type === 'file') {
+      return <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M14 2v6h6M8 13h8M8 17h5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>;
+    }
+
+    if (type === 'car') {
+      return <svg viewBox="0 0 24 24"><path d="M5 17h14l-1.5-6.5A3 3 0 0 0 14.6 8H9.4a3 3 0 0 0-2.9 2.5L5 17z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/><path d="M7 17v2M17 17v2M7.5 13h9" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>;
+    }
+
+    if (type === 'user') {
+      return <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M4 21a8 8 0 0 1 16 0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>;
+    }
+
+    if (type === 'phone') {
+      return <svg viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2A19.7 19.7 0 0 1 3 5.2 2 2 0 0 1 5 3h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.5 2.1L8.8 10.7a16 16 0 0 0 4.5 4.5l1.3-1.3a2 2 0 0 1 2.1-.5c.8.3 1.7.5 2.6.6A2 2 0 0 1 22 16.9z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+    }
+
+    return <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 7v5l3 3" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>;
+  }
+
+  function InfoTile({ icon, label, children }) {
+    return (
+      <div className="claims-pro-info">
+        <span><Icon type={icon} /></span>
+        <div>
+          <small>{label}</small>
+          <strong>{children || '-'}</strong>
+        </div>
+      </div>
+    );
+  }
+
+  function claimDocs(row) {
+    if (!row) return [];
+
+    const docs = [];
+
+    if (row.pdfUrl || row.pdf_url) {
+      docs.push({
+        name: 'claim_form.pdf',
+        url: row.pdfUrl || row.pdf_url,
+        type: 'PDF'
+      });
+    }
+
+    const fromArrays = [
+      ...(Array.isArray(row.documents) ? row.documents : []),
+      ...(Array.isArray(row.files) ? row.files : []),
+      ...(Array.isArray(row.uploads) ? row.uploads : [])
+    ];
+
+    fromArrays.forEach((doc, index) => {
+      docs.push({
+        name: doc.filename || doc.name || `document_${index + 1}`,
+        url: doc.url || doc.href || doc.path || '#',
+        type: String(doc.type || doc.mimeType || doc.mime_type || 'FILE').includes('pdf') ? 'PDF' : 'FILE'
+      });
+    });
+
+    return docs;
+  }
+
+  function claimPhotos(row) {
+    if (!row) return [];
+
+    const media = [
+      ...(Array.isArray(row.photos) ? row.photos : []),
+      ...(Array.isArray(row.images) ? row.images : []),
+      ...(Array.isArray(row.media) ? row.media : [])
+    ];
+
+    return media
+      .map((item, index) => ({
+        url: typeof item === 'string' ? item : item.url || item.href || item.path,
+        label: typeof item === 'string' ? `Photo ${index + 1}` : item.label || item.name || `Photo ${index + 1}`
+      }))
+      .filter(item => item.url);
+  }
+
+  const docs = claimDocs(selected);
+  const photos = claimPhotos(selected);
+
+  return (
+    <Page title="Insurance Claims" sub="Manage claim forms, insurance status and POS submission.">
+      <div className="claims-pro-page">
+        <section className="claims-pro-panel claims-pro-list-panel">
+          <div className="claims-pro-panel-head">
+            <div>
+              <span>Claim Queue</span>
+              <h2>Claims</h2>
+            </div>
+            <b>{filteredClaims.length} claims</b>
+          </div>
+
+          <div className="claims-pro-filters">
+            <label>
+              <span>Search</span>
+              <div className="claims-pro-input-wrap">
+                <Icon type="search" />
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search customer, phone, vehicle, ref..."
+                />
+              </div>
+            </label>
+
+            <label>
+              <span>Status</span>
+              <select value={status} onChange={e => setStatus(e.target.value)}>
+                <option value="all">All</option>
+                {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <div className="claims-pro-actions">
+            <button type="button" onClick={exportClaims}>Export CSV</button>
+          </div>
+
+          {!filteredClaims.length ? (
+            <div className="claims-pro-empty claims-pro-list-empty">
+              <div><Icon type="file" /></div>
+              <h3>No records yet</h3>
+              <p>New insurance claims from WhatsApp will appear here automatically.</p>
+            </div>
+          ) : (
+            <div className="claims-pro-list">
+              {filteredClaims.map(row => {
+                const key = claimKey(row);
+                const active = selected && claimKey(selected) === key;
+
+                return (
+                  <button
+                    type="button"
+                    key={key}
+                    className={active ? 'active' : ''}
+                    onClick={() => setSelectedId(key)}
+                  >
+                    <div className="claims-pro-row-icon"><Icon type="shield" /></div>
+                    <div>
+                      <strong>{key}</strong>
+                      <span>{value(row, ['customerName', 'name', 'customerPhone'], 'Customer')}</span>
+                    </div>
+                    <div>
+                      <b>{value(row, ['vehicle', 'car', 'service'], 'Vehicle to confirm')}</b>
+                      <small>{value(row, ['registration', 'regNo', 'reg', 'insurer'], 'To confirm')}</small>
+                    </div>
+                    <em>{labelStatus(row)}</em>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="claims-pro-panel claims-pro-detail-panel">
+          {!selected ? (
+            <div className="claims-pro-empty detail">
+              <div><Icon type="file" /></div>
+              <h3>No insurance claims found</h3>
+              <p>Try changing the search or status filter.</p>
+            </div>
+          ) : (
+            <>
+              <div className="claims-pro-detail-top">
+                <div>
+                  <span>Insurance Claim</span>
+                  <h2>{claimKey(selected)}</h2>
+                </div>
+                <em>{labelStatus(selected)}</em>
+              </div>
+
+              <div className="claims-pro-info-grid">
+                <InfoTile icon="user" label="Customer">{value(selected, ['customerName', 'name', 'customerPhone'])}</InfoTile>
+                <InfoTile icon="phone" label="Phone">{value(selected, ['customerPhone', 'phone'])}</InfoTile>
+                <InfoTile icon="car" label="Vehicle">{value(selected, ['vehicle', 'car'])}</InfoTile>
+                <InfoTile icon="file" label="Registration">{value(selected, ['registration', 'regNo', 'reg'])}</InfoTile>
+                <InfoTile icon="shield" label="Insurer">{value(selected, ['insurer', 'insurance', 'insuranceCompany'])}</InfoTile>
+                <InfoTile icon="file" label="Policy Number">{value(selected, ['policyNumber', 'policy_no', 'policy'])}</InfoTile>
+                <InfoTile icon="file" label="Claim Type">{value(selected, ['claimType', 'type', 'service'])}</InfoTile>
+                <InfoTile icon="clock" label="Created">{value(selected, ['createdAt', 'created_at', 'updatedAt'])}</InfoTile>
+              </div>
+
+              <div className="claims-pro-media-grid">
+                <div className="claims-pro-media-box">
+                  <div className="claims-pro-media-title">
+                    <span><Icon type="car" /></span>
+                    <h3>Claim Photos</h3>
+                  </div>
+
+                  {!photos.length ? (
+                    <div className="claims-pro-upload-empty">No photos uploaded yet</div>
+                  ) : (
+                    <div className="claims-pro-photo-grid">
+                      {photos.map((photo, index) => (
+                        <a key={`${photo.url}-${index}`} href={photo.url} target="_blank" rel="noreferrer">
+                          <img src={photo.url} alt={photo.label} />
+                          <span>{photo.label}</span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="claims-pro-media-box">
+                  <div className="claims-pro-media-title">
+                    <span><Icon type="file" /></span>
+                    <h3>Claim Documents</h3>
+                  </div>
+
+                  {!docs.length ? (
+                    <div className="claims-pro-upload-empty">No documents uploaded yet</div>
+                  ) : (
+                    <div className="claims-pro-doc-list">
+                      {docs.map((doc, index) => (
+                        <a key={`${doc.name}-${index}`} href={doc.url} target="_blank" rel="noreferrer">
+                          <b>{doc.type}</b>
+                          <span>{doc.name}</span>
+                          <small>Open</small>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="claims-pro-notes">
+                <h3>Claim Notes</h3>
+                <p>{value(selected, ['notes', 'note', 'description', 'summary'], 'No notes added.')}</p>
+              </div>
+            </>
+          )}
+        </section>
+      </div>
+
+      <MadeBy />
+    </Page>
+  );
+}
+) {
+  const rows = data.claims || [];
+  const [selected, setSelected] = useState(rows[0] || null);
+  const [note, setNote] = useState('');
+  const [notesTick, setNotesTick] = useState(0);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  const filteredRows = rows.filter(r => matchesSearch(r, search) && matchesStatus(r, statusFilter));
+
+  useEffect(() => {
+    if (filteredRows.length && !filteredRows.some(r => r.claimNo === selected?.claimNo)) {
+      setSelected(filteredRows[0]);
+    }
+    if (!filteredRows.length) setSelected(null);
+  }, [search, statusFilter, rows]);
+
+  async function status(s) {
+    if (!selected?.claimNo) return;
+    await api(`/claims/${selected.claimNo}/status`, 'POST', { status: s, note, notify: true });
+    setNote('');
+    await reload();
+  }
+
+  async function submitPOS() {
+    if (!selected?.claimNo) return;
+    await api(`/claims/${selected.claimNo}/submit-pos`, 'POST', {});
+    await reload();
+  }
+
+  async function addClaimNote() {
+    if (!selected?.claimNo) return;
+    const internalNote = prompt('Internal claim note:');
+    if (!internalNote) return;
+    await api('/notes', 'POST', { ref: selected.claimNo, type: 'claim_note', note: internalNote });
+    setNotesTick(x => x + 1);
+    alert('Note saved.');
+  }
+
+  async function messageCustomer() {
+    const msg = prompt('Message to customer:');
+    if (!msg || !selected?.customerPhone) return;
+    await api('/message', 'POST', { phone: selected.customerPhone, message: msg });
+    alert('Message sent.');
+  }
+
+  function printClaimSummary() {
+    if (!selected) return;
+    printCard(`Claim Summary - ${selected.claimNo}`, [
+      ['Claim No', selected.claimNo],
+      ['Customer', selected.customerName],
+      ['Phone', selected.customerPhone],
+      ['Insurer', selected.insurer],
+      ['Vehicle', selected.vehicle],
+      ['Registration', selected.registration],
+      ['POS Ref', selected.posRef || 'Not submitted'],
+      ['Status', selected.publicStatus || selected.status]
+    ]);
+  }
+
+  return (
+    <Page title="Insurance Claims" sub="Manage claim forms, insurance status and POS submission.">
+      <div className="split">
+        <SpotlightCard className="panel-card">
+          <SectionHead title="Claims" />
+          <FilterBar search={search} setSearch={setSearch} status={statusFilter} setStatus={setStatusFilter} count={filteredRows.length} label="claims" />
+          <TableTools onExport={() => downloadCSV('claims-export.csv', filteredRows)} />
+          <RecordList rows={filteredRows} onSelect={setSelected} selected={selected} />
+        </SpotlightCard>
+
+        <SpotlightCard className="panel-card sticky">
+          {!selected ? (
+            <EmptyState title="No insurance claims found" copy="Try changing the search or status filter." />
+          ) : (
+            <>
+              <DetailHead label="Insurance Claim" refNo={selected.claimNo} status={selected.publicStatus} />
+              <InfoGrid items={[
+                ['Customer', selected.customerName],
+                ['Phone', selected.customerPhone],
+                ['Insurer', selected.insurer],
+                ['Vehicle', selected.vehicle],
+                ['Registration', selected.registration],
+                ['POS Ref', selected.posRef || 'Not submitted']
+              ]} />
+              <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Optional customer note..." />
+              <div className="actions">
+                <button className="primary" onClick={() => status('submitted')}>Sent to Insurance</button>
+                <button className="primary" onClick={() => status('approved')}>Approved</button>
+                <button onClick={() => status('review')}>Needs Review</button>
+                <button onClick={() => status('rejected')}>Rejected</button>
+                <button onClick={submitPOS}>Submit to POS</button>
+                <button onClick={addClaimNote}>Add Internal Note</button>
+                <button onClick={printClaimSummary}>Print Claim Summary</button>
+                {selected.pdfUrl && <a href={selected.pdfUrl} target="_blank" rel="noreferrer">Open Claim PDF <ExternalLink size={14} /></a>}
+                {selected.customerPhone && <button onClick={messageCustomer}><MessageCircle size={15} /> Message Customer</button>}
+              </div>
+
+              <NotesTimeline api={api} refNo={selected.claimNo} refreshKey={notesTick} />
+            </>
+          )}
+        </SpotlightCard>
+      </div>
+
+      <MadeBy />
+    </Page>
+  );
+}
+
+
+function Customers({ data, api, reload }) {
+  const customers = data.customers || [];
+  const [selected, setSelected] = useState(customers[0] || null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [notesTick, setNotesTick] = useState(0);
+  const [search, setSearch] = useState('');
+
+  const filteredCustomers = customers.filter(c => matchesSearch(c, search));
+
+  useEffect(() => {
+    if (filteredCustomers.length && !filteredCustomers.some(c => c.phone === selected?.phone)) {
+      setSelected(filteredCustomers[0]);
+    }
+    if (!filteredCustomers.length) setSelected(null);
+  }, [search, customers]);
+
+  const phone = selected?.phone;
+  const claims = (data.claims || []).filter(x => x.customerPhone === phone);
+  const jobs = (data.jobs || []).filter(x => x.customerPhone === phone);
+  const docs = (data.documents || []).filter(x =>
+    x.phone === phone ||
+    claims.some(c => c.claimNo === x.claimNo) ||
+    jobs.some(j => j.jobNo === x.jobNo)
+  );
+
+  async function createCustomer(form) {
+    await api('/customers', 'POST', form);
+    setModalOpen(false);
+    alert('Customer saved successfully.');
+    await reload();
+  }
+
+  async function messageCustomer() {
+    const msg = prompt('Message to customer:');
+    if (!msg || !phone) return;
+    await api('/message', 'POST', { phone, message: msg });
+    alert('Message sent.');
+  }
+
+  async function addNote() {
+    if (!phone) return;
+    const note = prompt('Internal customer note:');
+    if (!note) return;
+    await api('/notes', 'POST', { ref: phone, type: 'customer_note', note });
+    setNotesTick(x => x + 1);
+    alert('Note saved.');
+  }
+
+  function printCustomerProfile() {
+    if (!selected) return;
+    printCard(`Customer Profile - ${selected.name || selected.phone}`, [
+      ['Name', selected.name || '-'],
+      ['Phone', selected.phone],
+      ['Vehicle', selected.vehicle || '-'],
+      ['Registration', selected.registration || '-'],
+      ['Claims', claims.length],
+      ['Jobs', jobs.length],
+      ['Documents', docs.length]
+    ]);
+  }
+
+  return (
+    <Page title="Customers" sub="Click a customer to see their claims, jobs, images and documents.">
+      <div className="split">
+        <SpotlightCard className="panel-card">
+          <SectionHead title="Customer List" action="Add Customer" onClick={() => setModalOpen(true)} />
+          <CustomerFilterBar search={search} setSearch={setSearch} count={filteredCustomers.length} />
+          <TableTools onExport={() => downloadCSV('customers-export.csv', filteredCustomers)} />
+          <CustomerList rows={filteredCustomers} selected={selected} onSelect={setSelected} />
+        </SpotlightCard>
+
+        <SpotlightCard className="panel-card sticky">
+          {!selected ? (
+            <EmptyState title="No customer found" copy="Try another name, phone, vehicle or registration." />
+          ) : (
+            <>
+              <DetailHead label="Customer Profile" refNo={selected.name || selected.phone} status={`${selected.records || 0} records`} />
+              <InfoGrid items={[
+                ['Phone', selected.phone],
+                ['Vehicle', selected.vehicle],
+                ['Registration', selected.registration],
+                ['Claims', claims.length],
+                ['Jobs', jobs.length],
+                ['Documents', docs.length]
+              ]} />
+              <div className="actions">
+                <button className="primary" onClick={messageCustomer}><MessageCircle size={15} /> Message Customer</button>
+                <button onClick={printCustomerProfile}>Print Customer Profile</button>
+                <button onClick={addNote}>Add Internal Note</button>
+              </div>
+
+              <NotesTimeline api={api} refNo={phone} refreshKey={notesTick} />
+              <MiniSection title="Insurance Claims" rows={claims} />
+              <MiniSection title="Jobs / Bookings" rows={jobs} />
+              <DocumentsBlock docs={docs} />
+            </>
+          )}
+        </SpotlightCard>
+      </div>
+
+      {modalOpen && (
+        <FormModal
+          title="Add Customer"
+          fields={CUSTOMER_FIELDS}
+          onClose={() => setModalOpen(false)}
+          onSubmit={createCustomer}
+        />
+      )}
+
+      <MadeBy />
+    </Page>
+  );
+}
+
+function DocumentsBlock({ docs }) {
+  return (
+    <div className="mini">
+      <h3>Images & Documents</h3>
+      {!docs.length ? (
+        <EmptyState title="No documents for this customer" copy="Uploaded IDs, licences, PDFs and photos will show here." />
+      ) : (
+        <div className="docs-grid">
+          {docs.map(d => (
+            <a key={d.id} href={d.url} target="_blank" rel="noreferrer">
+              <span>{d.type || 'Document'}</span>
+              <b>{d.ref || d.phone || '-'}</b>
+              <small>{d.caption || d.createdAt || 'Open file'}</small>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MiniSection({ title, rows }) {
+  return (
+    <div className="mini">
+      <h3>{title}</h3>
+      <RecordList rows={rows || []} />
+    </div>
+  );
+}
+
+function Settings({ data, api, reload, logout, theme, setTheme }) {
+  async function resetData() {
+    const ok = prompt('Type RESET to clear all dashboard test records. Services/settings stay.');
+    if (ok !== 'RESET') return;
+    await api('/reset-data', 'POST', { confirm: 'RESET' });
+    await reload();
+    alert('Dashboard records reset.');
+  }
+
+  return (
+    <Page title="Settings" sub="Business, appearance and system controls.">
+      <div className="settings-grid">
+        <SpotlightCard className="panel-card">
+          <SectionHead title="Business Details" />
+          <InfoGrid one items={[
+            ['Business', data.config?.business],
+            ['Base URL', data.config?.baseUrl]
+          ]} />
+        </SpotlightCard>
+
+        <SpotlightCard className="panel-card">
+          <SectionHead title="POS Integration" />
+          <InfoGrid one items={[
+            ['POS Connected', data.config?.posConnected ? 'Yes' : 'No'],
+            ['Shop', data.config?.shopName || '-'],
+            ['Terminal', data.config?.terminalName || '-']
+          ]} />
+        </SpotlightCard>
+
+        <SpotlightCard className="panel-card">
+          <SectionHead title="Appearance" />
+          <p className="muted">Change the dashboard theme here.</p>
+          <div className="actions">
+            <button className={theme === 'light' ? 'primary' : ''} onClick={() => setTheme('light')}>
+              <Sun size={16} strokeWidth={2.2} /> Light Theme
+            </button>
+            <button className={theme === 'dark' ? 'primary' : ''} onClick={() => setTheme('dark')}>
+              <Moon size={16} strokeWidth={2.2} /> Dark Theme
+            </button>
+          </div>
+        </SpotlightCard>
+
+        <SpotlightCard className="panel-card danger-card">
+          <SectionHead title="Danger Zone" />
+          <p className="muted">Only use this after testing when you want a clean dashboard.</p>
+          <div className="actions">
+            <button className="danger-button" onClick={resetData}><AlertTriangle size={16} /> Reset Dashboard Data</button>
+          </div>
+        </SpotlightCard>
+      </div>
+
+      <MadeBy />
+    </Page>
+  );
+}
+
+function DetailHead({ label, refNo, status }) {
+  return (
+    <div className="detail-head">
+      <div>
+        <span>{label}</span>
+        <h2>{refNo}</h2>
+      </div>
+      <Badge>{status}</Badge>
+    </div>
+  );
+}
+
+function InfoGrid({ items, one }) {
+  return (
+    <div className={cx('info-grid', one && 'one')}>
+      {items.map(([k, v]) => (
+        <label key={k}>{k}<b>{String(v ?? '-')}</b></label>
+      ))}
+    </div>
+  );
+}
+
+function Loading({ error, reset }) {
+  return (
+    <main className="loading">
+      <SafeLogo src={W_LOGO} className="loading-logo" fallback="AG" />
+      <h2>{error ? 'Access failed' : 'Loading dashboard...'}</h2>
+      <p>{error || 'Preparing records.'}</p>
+      {error && <button className="primary" onClick={reset}>Try PIN Again</button>}
+      <MadeBy />
+    </main>
+  );
+}
+
+
+function PhoenixDashboard({ data = {}, setTab }) {
+  const [botOnline, setBotOnline] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function checkBot() {
+      try {
+        const res = await fetch('/health', { cache: 'no-store' });
+        const json = await res.json();
+        if (alive) setBotOnline(Boolean(json?.ok && json?.ycloudConfigured));
+      } catch {
+        if (alive) setBotOnline(false);
+      }
+    }
+
+    checkBot();
+    const timer = setInterval(checkBot, 30000);
+
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  const bookings = data.bookings || [];
+  const claims = data.claims || data.insuranceClaims || [];
+  const customers = data.customers || [];
+
+  const latestBookings = bookings.slice(0, 5);
+  const latestClaims = claims.slice(0, 5);
+  const latestCustomers = customers.slice(0, 6);
+
+  const botLabel = botOnline === null ? 'Checking' : botOnline ? 'Online' : 'Offline';
+
+  return (
+    <div className="phoenix-dashboard">
+      <div className="phoenix-topbar">
+        <div>
+          <span className="phoenix-kicker">WINDSCREEN AUTOMATION</span>
+          <h1>Control Centre</h1>
+          <p>Live WhatsApp booking and insurance claim overview.</p>
+        </div>
+
+        <div className={`phoenix-bot-chip ${botOnline ? 'online' : botOnline === false ? 'offline' : 'checking'}`}>
+          <span></span>
+          WhatsApp Bot: {botLabel}
+        </div>
+      </div>
+
+      <div className="phoenix-grid">
+        <section className="phoenix-hero-card bookings">
+          <div className="phoenix-card-head">
+            <span>BOOKINGS</span>
+            <button onClick={() => setTab?.('bookings')}>Open</button>
+          </div>
+
+          <div className="phoenix-big-number">{bookings.length}</div>
+          <p>Customer bookings captured from WhatsApp and manual dashboard entries.</p>
+
+          <div className="phoenix-energy-line">
+            <i></i>
+            <b></b>
+            <i></i>
+          </div>
+
+          <div className="phoenix-mini-list">
+            {latestBookings.length ? latestBookings.map((b, i) => (
+              <div key={b.jobNo || b.ref || i}>
+                <strong>{b.customerName || b.name || 'Customer'}</strong>
+                <span>{b.vehicle || 'Vehicle to confirm'} • {b.service || 'Service to confirm'}</span>
+              </div>
+            )) : (
+              <div className="phoenix-empty">No bookings yet</div>
+            )}
+          </div>
+        </section>
+
+        <section className="phoenix-status-card">
+          <div className="phoenix-status-orb">
+            <div className={botOnline ? 'pulse online' : botOnline === false ? 'pulse offline' : 'pulse checking'}></div>
+            <strong>{botLabel}</strong>
+            <span>WhatsApp Bot</span>
+          </div>
+
+          <div className="phoenix-system-lines">
+            <div><span>Webhook</span><b>{botOnline ? 'ACTIVE' : botOnline === false ? 'OFFLINE' : 'CHECKING'}</b></div>
+            <div><span>YCloud</span><b>{botOnline ? 'CONNECTED' : botOnline === false ? 'CHECK' : '...'}</b></div>
+            <div><span>Dashboard Sync</span><b>LIVE</b></div>
+          </div>
+        </section>
+
+        <section className="phoenix-claim-card">
+          <div className="phoenix-card-head">
+            <span>INSURANCE CLAIMS</span>
+            <button onClick={() => setTab?.('claims')}>Open</button>
+          </div>
+
+          <div className="phoenix-big-number">{claims.length}</div>
+          <p>Claims submitted through the automation and claim form process.</p>
+
+          <div className="phoenix-claim-meter">
+            <div style={{ width: `${Math.min(100, Math.max(8, claims.length * 18))}%` }}></div>
+          </div>
+
+          <div className="phoenix-mini-list">
+            {latestClaims.length ? latestClaims.map((c, i) => (
+              <div key={c.claimNo || c.ref || i}>
+                <strong>{c.claimNo || c.ref || 'Claim'}</strong>
+                <span>{c.customerName || c.name || 'Customer'} • {c.vehicle || 'Vehicle to confirm'}</span>
+              </div>
+            )) : (
+              <div className="phoenix-empty">No insurance claims yet</div>
+            )}
+          </div>
+        </section>
+
+        <section className="phoenix-list-card latest-claims">
+          <div className="phoenix-card-head">
+            <span>LATEST INSURANCE CLAIMS</span>
+            <button onClick={() => setTab?.('claims')}>View All</button>
+          </div>
+
+          <div className="phoenix-table">
+            {latestClaims.length ? latestClaims.map((c, i) => (
+              <div key={c.claimNo || c.ref || i}>
+                <b>{c.claimNo || c.ref || 'Claim'}</b>
+                <span>{c.customerName || c.name || 'Customer'}</span>
+                <em>{c.status || c.publicStatus || 'Pending'}</em>
+              </div>
+            )) : (
+              <div className="phoenix-empty large">No insurance claims yet</div>
+            )}
+          </div>
+        </section>
+
+        <section className="phoenix-list-card latest-customers">
+          <div className="phoenix-card-head">
+            <span>LATEST CUSTOMERS</span>
+            <button onClick={() => setTab?.('customers')}>View All</button>
+          </div>
+
+          <div className="phoenix-customer-grid">
+            {latestCustomers.length ? latestCustomers.map((c, i) => (
+              <div key={c.id || c.phone || i}>
+                <strong>{c.customerName || c.name || 'Customer'}</strong>
+                <span>{c.phone || c.customerPhone || 'No phone'}</span>
+                <b>{c.vehicle || 'Vehicle to confirm'}</b>
+              </div>
+            )) : (
+              <div className="phoenix-empty large">No customers yet</div>
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+
+function ExactCustomerDashboard({ data = {}, setActive }) {
+  const [botOnline, setBotOnline] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function checkBot() {
+      try {
+        const res = await fetch('/health', { cache: 'no-store' });
+        const json = await res.json();
+        if (alive) setBotOnline(Boolean(json?.ok && json?.ycloudConfigured));
+      } catch {
+        if (alive) setBotOnline(false);
+      }
+    }
+
+    checkBot();
+    const timer = setInterval(checkBot, 30000);
+
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  const bookings = data.bookings || [];
+  const claims = data.claims || data.insuranceClaims || [];
+  const customers = data.customers || [];
+
+  const latestClaims = claims.slice(0, 5);
+  const latestCustomers = customers.slice(0, 5);
+
+  const initials = (name) => {
+    const clean = String(name || 'Customer').trim();
+    const parts = clean.split(/\s+/).filter(Boolean);
+    if (!parts.length) return 'CU';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  };
+
+  const botIsOnline = botOnline === true;
+
+  return (
+    <div className="exact-dashboard">
+      <div className="exact-page-head">
+        <h1>Dashboard</h1>
+        <p>An overview of your key activity.</p>
+      </div>
+
+      <div className="exact-kpi-grid">
+        <div className="exact-kpi-card">
+          <div className="exact-kpi-icon blue">
+            <svg viewBox="0 0 24 24"><path d="M7 3v3M17 3v3M4 9h16M6 5h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/><path d="M8 13h3v3H8z"/></svg>
+          </div>
+          <div>
+            <span>Bookings</span>
+            <strong>{bookings.length}</strong>
+            <p>Normal customer bookings</p>
+            <div className="exact-trend"><b>Today</b><em>+12%</em></div>
+          </div>
+        </div>
+
+        <div className="exact-kpi-card">
+          <div className="exact-kpi-icon blue">
+            <svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 5 3.5 8.5 7 10 3.5-1.5 7-5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-5"/></svg>
+          </div>
+          <div>
+            <span>Insurance Claims</span>
+            <strong>{claims.length}</strong>
+            <p>Pending claims</p>
+            <div className="exact-trend"><b>Pending</b><em>Stable</em></div>
+          </div>
+        </div>
+
+        <div className="exact-kpi-card exact-whatsapp-card">
+          <div className="exact-whatsapp-icon">
+            <svg viewBox="0 0 32 32"><path d="M16 3C9.38 3 4 8.38 4 15c0 2.26.63 4.38 1.73 6.18L4 29l8.05-1.66A11.87 11.87 0 0 0 16 28c6.62 0 12-5.38 12-12S22.62 3 16 3Z"/><path d="M11.7 9.9c-.3-.7-.6-.7-.9-.7h-.8c-.3 0-.8.1-1.2.6-.4.5-1.5 1.5-1.5 3.6s1.6 4.2 1.8 4.5c.2.3 3.1 5 7.7 6.8 3.8 1.5 4.6 1.2 5.4 1.1.8-.1 2.7-1.1 3.1-2.2.4-1.1.4-2 .3-2.2-.1-.2-.4-.3-.8-.5l-2.8-1.4c-.4-.2-.7-.2-1 .2-.3.4-1.1 1.4-1.4 1.7-.2.3-.5.3-.9.1-.4-.2-1.8-.7-3.4-2.1-1.3-1.1-2.1-2.5-2.4-2.9-.2-.4 0-.6.2-.8.2-.2.4-.5.6-.7.2-.2.3-.4.4-.7.1-.3.1-.5 0-.7l-1.3-3.1Z"/></svg>
+          </div>
+          <div>
+            <span>WhatsApp Bot Status</span>
+            <div className={`exact-status-pill ${botIsOnline ? 'online' : 'offline'}`}>
+              <i></i>{botOnline === null ? 'Checking' : botIsOnline ? 'Online' : 'Offline'}
+            </div>
+            <p>{botIsOnline ? 'Bot is active and responding' : botOnline === null ? 'Checking bot connection' : 'Bot needs attention'}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="exact-lower-grid">
+        <section className="exact-panel">
+          <div className="exact-panel-head">
+            <h2>Latest Insurance Claims</h2>
+          </div>
+
+          <div className="exact-claim-table">
+            <div className="exact-table-header">
+              <span>REF</span>
+              <span>CUSTOMER</span>
+              <span>VEHICLE</span>
+              <span>STATUS</span>
+            </div>
+
+            {latestClaims.length ? latestClaims.map((claim, i) => (
+              <div className="exact-table-row" key={claim.claimNo || claim.ref || i}>
+                <span>{claim.claimNo || claim.ref || `CLM-${String(i + 1).padStart(4, '0')}`}</span>
+                <b>{claim.customerName || claim.name || 'Customer'}</b>
+                <span>{claim.vehicle || 'Vehicle to confirm'}</span>
+                <em className={String(claim.status || '').toLowerCase().includes('approved') ? 'approved' : 'pending'}>
+                  <i></i>{claim.status || claim.publicStatus || 'Pending'}
+                </em>
+              </div>
+            )) : (
+              <div className="exact-empty-row">No insurance claims yet</div>
+            )}
+          </div>
+
+          <button className="exact-link-btn" onClick={() => setActive?.('claims')}>View all claims <span>›</span></button>
+        </section>
+
+        <section className="exact-panel">
+          <div className="exact-panel-head">
+            <h2>Latest Customers</h2>
+          </div>
+
+          <div className="exact-customer-list">
+            {latestCustomers.length ? latestCustomers.map((customer, i) => (
+              <button className="exact-customer-row" key={customer.id || customer.phone || i} onClick={() => setActive?.('customers')}>
+                <div className={`exact-avatar tone-${i % 5}`}>{initials(customer.customerName || customer.name)}</div>
+                <div>
+                  <b>{customer.customerName || customer.name || 'Customer'}</b>
+                  <span>{customer.phone || customer.customerPhone || 'No phone'}</span>
+                </div>
+                <div>
+                  <strong>{customer.vehicle || 'Vehicle to confirm'}</strong>
+                  <span>Reg: {customer.registration || customer.regNo || customer.reg || 'To confirm'}</span>
+                </div>
+                <i>›</i>
+              </button>
+            )) : (
+              <div className="exact-empty-row">No customers yet</div>
+            )}
+          </div>
+
+          <button className="exact-link-btn" onClick={() => setActive?.('customers')}>View all customers <span>›</span></button>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+
+function ExactBookingsPage({ data = {}, api }) {
+  const bookings = data.bookings || [];
+  const [selectedRef, setSelectedRef] = useState(bookings[0]?.jobNo || bookings[0]?.ref || '');
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('all');
+  const [media, setMedia] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [localStatus, setLocalStatus] = useState({});
+
+  useEffect(() => {
+    if (!selectedRef && bookings[0]) {
+      setSelectedRef(bookings[0].jobNo || bookings[0].ref || '');
+    }
+  }, [bookings, selectedRef]);
+
+  const normalise = (item) => {
+    const rawStatus = localStatus[item.jobNo || item.ref] || item.status || item.publicStatus || 'new';
+
+    return {
+      ref: item.jobNo || item.ref || item.job_no || 'JC-0000',
+      customer: item.customerName || item.name || item.customer_name || 'Customer',
+      phone: item.customerPhone || item.phone || item.customer_phone || '-',
+      vehicle: item.vehicle || 'Vehicle to confirm',
+      registration: item.registration || item.regNo || item.reg || item.reg_no || 'To confirm',
+      service: item.service || item.jobType || 'Service to confirm',
+      location: item.location || 'To confirm',
+      bookingDate: item.bookingDate || item.booking_date || '-',
+      bookingTime: item.bookingTime || item.booking_time || '-',
+      priority: item.priority || '-',
+      quoteAmount: item.quoteAmount || item.quote_amount || '-',
+      fitter: item.fitter || item.assignedTo || item.assigned_to || '-',
+      invoice: item.invoiceStatus || item.invoice_status || '-',
+      status: rawStatus
+    };
+  };
+
+  const rows = bookings.map(normalise);
+
+  const filtered = rows.filter(row => {
+    const q = search.trim().toLowerCase();
+    const matchesSearch = !q || `${row.ref} ${row.customer} ${row.phone} ${row.vehicle} ${row.registration} ${row.service}`.toLowerCase().includes(q);
+    const matchesStatus = status === 'all' || String(row.status || '').toLowerCase().includes(status);
+    return matchesSearch && matchesStatus;
+  });
+
+  const selected = rows.find(row => row.ref === selectedRef) || filtered[0] || rows[0] || null;
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadMedia() {
+      if (!selected) return setMedia([]);
+
+      const pin = localStorage.getItem('adminPin') || localStorage.getItem('pin') || localStorage.getItem('studioPin') || '123456';
+
+      try {
+        const qs = new URLSearchParams({
+          jobNo: selected.ref,
+          phone: selected.phone || '',
+          pin
+        });
+
+        const res = await fetch(`/api/studio/v3/booking-media?${qs.toString()}`, {
+          headers: { 'x-admin-pin': pin },
+          cache: 'no-store'
+        });
+
+        const json = await res.json();
+        if (alive) setMedia(json.media || []);
+      } catch {
+        if (alive) setMedia([]);
+      }
+    }
+
+    loadMedia();
+    return () => { alive = false; };
+  }, [selected?.ref, selected?.phone]);
+
+  const photos = media.filter(doc => {
+    const u = String(doc.url || doc.filename || '').toLowerCase();
+    const m = String(doc.mimeType || doc.mime_type || '').toLowerCase();
+    return m.includes('image') || /\.(jpg|jpeg|png|webp|heic)$/i.test(u);
+  });
+
+  const files = media.filter(doc => !photos.includes(doc));
+
+  async function proceed() {
+    if (!selected) return;
+
+    const pin = localStorage.getItem('adminPin') || localStorage.getItem('pin') || localStorage.getItem('studioPin') || '123456';
+
+    setBusy(true);
+
+    try {
+      const res = await fetch(`/api/studio/v3/bookings/${encodeURIComponent(selected.ref)}/proceed`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-pin': pin
+        },
+        body: JSON.stringify({ pin })
+      });
+
+      await res.json();
+
+      setLocalStatus(prev => ({
+        ...prev,
+        [selected.ref]: 'in_progress'
+      }));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const statusLabel = (value) => {
+    const t = String(value || '').toLowerCase();
+    if (t.includes('progress')) return 'In Progress';
+    if (t.includes('complete')) return 'Completed';
+    if (t.includes('closed')) return 'Closed';
+    if (t.includes('quote')) return 'Quote Stage';
+    return 'New';
+  };
+
+  return (
+    <div className="exact-bookings-page">
+      <div className="exact-bookings-title">
+        <h1>Bookings</h1>
+        <p>Normal customer bookings from WhatsApp.</p>
+      </div>
+
+      <div className="exact-bookings-grid">
+        <section className="exact-bookings-list-card">
+          <div className="exact-bookings-card-head">
+            <h2>Bookings</h2>
+            <button className="exact-create-btn" type="button">
+              <span>+</span> Create Booking
+            </button>
+          </div>
+
+          <div className="exact-booking-tools">
+            <label>
+              <span>Search</span>
+              <div>
+                <i>⌕</i>
+                <input
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  placeholder="Search customer, phone, vehicle..."
+                />
+              </div>
+            </label>
+
+            <label>
+              <span>Status</span>
+              <select value={status} onChange={e => setStatus(e.target.value)}>
+                <option value="all">All</option>
+                <option value="new">New</option>
+                <option value="progress">In Progress</option>
+                <option value="completed">Completed</option>
+              </select>
+            </label>
+
+            <b>{filtered.length} bookings</b>
+          </div>
+
+          <button className="exact-export-btn" type="button">⇩ Export CSV</button>
+
+          <div className="exact-booking-rows">
+            {filtered.length ? filtered.map(row => (
+              <button
+                key={row.ref}
+                className={`exact-booking-row ${selected?.ref === row.ref ? 'active' : ''}`}
+                onClick={() => setSelectedRef(row.ref)}
+                type="button"
+              >
+                <div>
+                  <strong>{row.ref}</strong>
+                  <span>{row.customer}</span>
+                </div>
+
+                <div>
+                  <strong>{row.vehicle}</strong>
+                  <span>{row.registration}</span>
+                </div>
+
+                <em className={statusLabel(row.status).toLowerCase().replace(/\s+/g, '-')}>
+                  {statusLabel(row.status)}
+                </em>
+              </button>
+            )) : (
+              <div className="exact-booking-empty">No bookings found</div>
+            )}
+          </div>
+        </section>
+
+        <section className="exact-booking-detail-card">
+          {selected ? (
+            <>
+              <div className="exact-booking-detail-head">
+                <div>
+                  <span>BOOKING</span>
+                  <h2>{selected.ref}</h2>
+                </div>
+                <em className={statusLabel(selected.status).toLowerCase().replace(/\s+/g, '-')}>
+                  {statusLabel(selected.status)}
+                </em>
+              </div>
+
+              <div className="exact-detail-grid">
+                <InfoTile icon="user" label="Customer" value={selected.customer} />
+                <InfoTile icon="phone" label="Phone" value={selected.phone} />
+                <InfoTile icon="car" label="Vehicle" value={selected.vehicle} />
+                <InfoTile icon="file" label="Registration" value={selected.registration} />
+                <InfoTile icon="shield" label="Service" value={selected.service} />
+                <InfoTile icon="map" label="Location" value={selected.location} />
+                <InfoTile icon="calendar" label="Booking Date" value={selected.bookingDate} />
+                <InfoTile icon="clock" label="Booking Time" value={selected.bookingTime} />
+                <InfoTile icon="flag" label="Priority" value={selected.priority} />
+                <InfoTile icon="dollar" label="Quote Amount" value={selected.quoteAmount} />
+                <InfoTile icon="userCheck" label="Fitter" value={selected.fitter} />
+                <InfoTile icon="invoice" label="Invoice" value={selected.invoice} />
+              </div>
+
+              <div className="exact-media-section">
+                <div>
+                  <h3>Customer Photos</h3>
+                  <div className="exact-photo-grid">
+                    {photos.length ? photos.slice(0, 3).map((doc, i) => (
+                      <a key={doc.id || doc.url || i} href={doc.url} target="_blank" rel="noreferrer" className="exact-photo-card">
+                        <img src={doc.url} alt={`Customer upload ${i + 1}`} />
+                        <b>{i === 0 ? 'Front view' : i === 1 ? 'Side view' : 'Damage / area'}</b>
+                      </a>
+                    )) : (
+                      <div className="exact-media-empty">No photos uploaded yet</div>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <h3>Customer Documents</h3>
+                  <div className="exact-doc-list">
+                    {files.length ? files.slice(0, 5).map((doc, i) => {
+                      const name = doc.filename || `document-${i + 1}`;
+                      const lower = name.toLowerCase();
+                      const tag = lower.endsWith('.pdf') ? 'PDF' : lower.endsWith('.jpg') || lower.endsWith('.jpeg') || lower.endsWith('.png') ? 'JPG' : 'FILE';
+
+                      return (
+                        <a key={doc.id || doc.url || i} href={doc.url} target="_blank" rel="noreferrer" className="exact-doc-row">
+                          <ExactIcon name={tag === 'PDF' ? 'file' : 'image'} />
+                          <b>{name}</b>
+                          <em className={tag.toLowerCase()}>{tag}</em>
+                          <i>⇩</i>
+                        </a>
+                      );
+                    }) : (
+                      <div className="exact-media-empty">No documents uploaded yet</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="exact-customer-notes">
+                <h3>Customer Notes</h3>
+                <p>
+                  Customer reached out via WhatsApp requesting {selected.service || 'service'} for their vehicle.
+                  Confirm any missing registration details, uploads and preferred booking time before starting the job.
+                </p>
+              </div>
+
+              <div className="exact-booking-actions">
+                <button type="button" onClick={proceed} disabled={busy || statusLabel(selected.status) === 'In Progress'}>
+                  {busy ? 'Processing...' : statusLabel(selected.status) === 'In Progress' ? 'In Progress' : 'Proceed / Start Job'}
+                </button>
+                <span>After this, the booking moves into Jobs as an active job.</span>
+              </div>
+            </>
+          ) : (
+            <div className="exact-booking-empty">Select a booking</div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+
+function ExactIcon({ name }) {
+  const common = {
+    width: 20,
+    height: 20,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 2,
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    "aria-hidden": "true"
+  };
+
+  const icons = {
+    user: (
+      <svg {...common}>
+        <path d="M20 21a8 8 0 0 0-16 0" />
+        <circle cx="12" cy="7" r="4" />
+      </svg>
+    ),
+    phone: (
+      <svg {...common}>
+        <path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.8 19.8 0 0 1 3.08 5.18 2 2 0 0 1 5.06 3h3a2 2 0 0 1 2 1.72c.12.9.33 1.77.63 2.6a2 2 0 0 1-.45 2.11L9 10.67a16 16 0 0 0 4.33 4.33l1.24-1.24a2 2 0 0 1 2.11-.45c.83.3 1.7.51 2.6.63A2 2 0 0 1 22 16.92Z" />
+      </svg>
+    ),
+    car: (
+      <svg {...common}>
+        <path d="M19 17h2l-2-6-2-3H7l-2 3-2 6h2" />
+        <path d="M7 17h10" />
+        <circle cx="7" cy="17" r="2" />
+        <circle cx="17" cy="17" r="2" />
+        <path d="M6 11h12" />
+      </svg>
+    ),
+    file: (
+      <svg {...common}>
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+        <path d="M14 2v6h6" />
+        <path d="M8 13h8" />
+        <path d="M8 17h6" />
+      </svg>
+    ),
+    shield: (
+      <svg {...common}>
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+        <path d="m9 12 2 2 4-5" />
+      </svg>
+    ),
+    map: (
+      <svg {...common}>
+        <path d="M12 21s7-4.35 7-11a7 7 0 1 0-14 0c0 6.65 7 11 7 11Z" />
+        <circle cx="12" cy="10" r="2.5" />
+      </svg>
+    ),
+    calendar: (
+      <svg {...common}>
+        <path d="M8 2v4" />
+        <path d="M16 2v4" />
+        <rect x="3" y="5" width="18" height="16" rx="2" />
+        <path d="M3 10h18" />
+      </svg>
+    ),
+    clock: (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </svg>
+    ),
+    flag: (
+      <svg {...common}>
+        <path d="M5 22V4" />
+        <path d="M5 4h12l-1.5 4L17 12H5" />
+      </svg>
+    ),
+    dollar: (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 6v12" />
+        <path d="M15 9.5A3 3 0 0 0 12 8c-1.7 0-3 .9-3 2s1.3 2 3 2 3 .9 3 2-1.3 2-3 2a3 3 0 0 1-3-1.5" />
+      </svg>
+    ),
+    userCheck: (
+      <svg {...common}>
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+        <circle cx="9" cy="7" r="4" />
+        <path d="m16 11 2 2 4-4" />
+      </svg>
+    ),
+    invoice: (
+      <svg {...common}>
+        <path d="M6 2h12v20l-3-2-3 2-3-2-3 2Z" />
+        <path d="M9 7h6" />
+        <path d="M9 11h6" />
+        <path d="M9 15h4" />
+      </svg>
+    ),
+    image: (
+      <svg {...common}>
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <circle cx="9" cy="9" r="2" />
+        <path d="m21 15-3.5-3.5a2 2 0 0 0-3 0L7 19" />
+      </svg>
+    )
+  };
+
+  return <i className="exact-real-icon">{icons[name] || icons.file}</i>;
+}
+
+function InfoTile({ icon, label, value }) {
+  return (
+    <div className="exact-info-tile">
+      <ExactIcon name={icon} />
+      <div>
+        <span>{label}</span>
+        <strong>{value || '-'}</strong>
+      </div>
+    </div>
+  );
+}
+
+
+function PremiumDashboardPage({ data = {}, setActive }) {
+  const [botOnline, setBotOnline] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function checkBot() {
+      try {
+        const res = await fetch('/health', { cache: 'no-store' });
+        const json = await res.json();
+        if (alive) setBotOnline(Boolean(json?.ok && json?.ycloudConfigured));
+      } catch {
+        if (alive) setBotOnline(false);
+      }
+    }
+
+    checkBot();
+    const timer = setInterval(checkBot, 30000);
+
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  const bookings = data.bookings || [];
+  const claims = data.claims || data.insuranceClaims || [];
+  const customers = data.customers || [];
+
+  const latestClaims = claims.slice(0, 5);
+  const latestCustomers = customers.slice(0, 5);
+
+  const initials = (value) => {
+    const clean = String(value || 'Customer').trim();
+    const parts = clean.split(/\s+/).filter(Boolean);
+
+    if (!parts.length) return 'CU';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  };
+
+  const botLabel = botOnline === null ? 'Checking' : botOnline ? 'Online' : 'Offline';
+
+  return (
+    <div className="premium-dashboard-page">
+      <header className="premium-dashboard-hero">
+        <div>
+          <span className="premium-eyebrow">WINDSCREEN AUTOMATION</span>
+          <h1>Dashboard</h1>
+          <p>An overview of your key activity.</p>
+        </div>
+
+        <div className="premium-dashboard-actions">
+          <button type="button" aria-label="Search"><Search size={20} /></button>
+          <button type="button" aria-label="Notifications" className="premium-bell">
+            <Bell size={20} />
+            <span>3</span>
+          </button>
+          <button type="button" aria-label="Profile"><UserCircle size={24} /></button>
+        </div>
+      </header>
+
+      <section className="premium-kpi-grid">
+        <PremiumMetricCard
+          icon={CalendarCheck}
+          title="Bookings"
+          value={bookings.length}
+          subtitle="Normal customer bookings"
+          accent="blue"
+          footer="Captured from WhatsApp and dashboard entries"
+        />
+
+        <PremiumMetricCard
+          icon={ShieldCheck}
+          title="Insurance Claims"
+          value={claims.length}
+          subtitle="Pending claims"
+          accent="indigo"
+          footer="Claim requests and submitted documents"
+        />
+
+        <article className={`premium-bot-card ${botOnline ? 'online' : botOnline === false ? 'offline' : 'checking'}`}>
+          <div className="premium-bot-icon">
+            <MessageCircle size={30} />
+          </div>
+
+          <div>
+            <span>WhatsApp Bot Status</span>
+            <strong>{botLabel}</strong>
+            <p>{botOnline ? 'Bot is active and responding' : botOnline === null ? 'Checking bot connection' : 'Bot needs attention'}</p>
+          </div>
+
+          <div className="premium-status-dot">
+            <i></i>
+            <b>{botLabel}</b>
+          </div>
+        </article>
+      </section>
+
+      <section className="premium-dashboard-grid">
+        <article className="premium-panel premium-claims-panel">
+          <div className="premium-panel-head">
+            <div>
+              <span>INSURANCE</span>
+              <h2>Latest Insurance Claims</h2>
+            </div>
+
+            <button type="button" onClick={() => setActive?.('claims')}>
+              Open Claims
+              <ArrowRight size={17} />
+            </button>
+          </div>
+
+          <div className="premium-claims-table">
+            <div className="premium-table-head">
+              <span>Ref</span>
+              <span>Customer</span>
+              <span>Vehicle</span>
+              <span>Status</span>
+            </div>
+
+            {latestClaims.length ? latestClaims.map((claim, index) => (
+              <div className="premium-table-row" key={claim.claimNo || claim.ref || index}>
+                <strong>{claim.claimNo || claim.ref || `CLM-${String(index + 1).padStart(4, '0')}`}</strong>
+                <span>{claim.customerName || claim.name || 'Customer'}</span>
+                <span>{claim.vehicle || 'Vehicle to confirm'}</span>
+                <em>{claim.status || claim.publicStatus || 'Pending'}</em>
+              </div>
+            )) : (
+              <div className="premium-empty-state">
+                <div><FileText size={34} /></div>
+                <h3>No insurance claims yet</h3>
+                <p>New claims from WhatsApp will appear here automatically.</p>
+              </div>
+            )}
+          </div>
+
+          <button type="button" className="premium-link-btn" onClick={() => setActive?.('claims')}>
+            View all claims
+            <ChevronRight size={17} />
+          </button>
+        </article>
+
+        <article className="premium-panel premium-customers-panel">
+          <div className="premium-panel-head">
+            <div>
+              <span>CUSTOMERS</span>
+              <h2>Latest Customers</h2>
+            </div>
+
+            <button type="button" onClick={() => setActive?.('customers')}>
+              Open Customers
+              <ArrowRight size={17} />
+            </button>
+          </div>
+
+          <div className="premium-customer-list">
+            {latestCustomers.length ? latestCustomers.map((customer, index) => (
+              <button type="button" className="premium-customer-row" key={customer.id || customer.phone || index} onClick={() => setActive?.('customers')}>
+                <div className={`premium-avatar tone-${index % 5}`}>{initials(customer.customerName || customer.name)}</div>
+
+                <div>
+                  <strong>{customer.customerName || customer.name || 'Customer'}</strong>
+                  <span>{customer.phone || customer.customerPhone || 'No phone'}</span>
+                </div>
+
+                <div>
+                  <b>{customer.vehicle || 'Vehicle to confirm'}</b>
+                  <span>Reg: {customer.registration || customer.regNo || customer.reg || 'To confirm'}</span>
+                </div>
+
+                <ChevronRight size={19} />
+              </button>
+            )) : (
+              <div className="premium-empty-state compact">
+                <div><Users size={30} /></div>
+                <h3>No customers yet</h3>
+                <p>New WhatsApp customers will show here.</p>
+              </div>
+            )}
+          </div>
+
+          <button type="button" className="premium-link-btn" onClick={() => setActive?.('customers')}>
+            View all customers
+            <ChevronRight size={17} />
+          </button>
+        </article>
+      </section>
+    </div>
+  );
+}
+
+function PremiumMetricCard({ icon: Icon, title, value, subtitle, footer, accent }) {
+  return (
+    <article className={`premium-metric-card ${accent}`}>
+      <div className="premium-metric-icon">
+        <Icon size={30} />
+      </div>
+
+      <div>
+        <span>{title}</span>
+        <strong>{value}</strong>
+        <p>{subtitle}</p>
+      </div>
+
+      <footer>
+        <CheckCircle2 size={16} />
+        <span>{footer}</span>
+      </footer>
+    </article>
+  );
+}
+
+function App() {
+  const [theme, setTheme] = useTheme();
+  const [pin, setPin] = useState(localStorage.getItem('studioPin') || '');
+  const [active, setActive] = useState('dashboard');
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+
+  async function api(path, method = 'GET', body) {
+    const res = await fetch(`/api/studio/v3${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'x-admin-pin': pin },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.ok === false) throw new Error(json.error || 'Request failed');
+    return json;
+  }
+
+  async function load() {
+    try {
+      setError('');
+      setData(await api('/state'));
+    } catch (e) {
+      setData(null);
+      setError(e.message);
+    }
+  }
+
+  useEffect(() => {
+    if (pin) load();
+  }, [pin]);
+
+  function login(v) {
+    localStorage.setItem('studioPin', v);
+    setPin(v);
+  }
+
+  function logout() {
+    localStorage.removeItem('studioPin');
+    setPin('');
+    setData(null);
+    setError('');
+  }
+
+  if (!pin || error === 'Invalid or missing admin PIN.') return <Login onLogin={login} />;
+  if (!data) return <Loading error={error} reset={logout} />;
+
+  const pages = {
+    dashboard: <PremiumDashboardPage data={data} setActive={setActive} />,
+    schedule: <SchedulePage data={data} setActive={setActive} />,
+    pipeline: <PipelinePage data={data} api={api} reload={load} />,
+    reports: <ReportsPage data={data} />,
+    activity: <ActivityPage api={api} />,
+    team: <TeamPage api={api} data={data} />,
+    parts: <PartsPage api={api} />,
+    payments: <PaymentsPage data={data} api={api} reload={load} />,
+    tasks: <TasksPage data={data} api={api} reload={load} />,
+    documents: <DocumentsPage data={data} api={api} />,
+    bookings: <ExactBookingsPage data={data} api={api} />,
+    quotes: <WorkPage title="Quotes" sub="Customers asking for prices or estimates." rows={data.quotes || []} type="Quote" api={api} reload={load} />,
+    claims: <Claims data={data} api={api} reload={load} />,
+    jobs: <WorkPage title="Jobs" sub="Workshop jobs and work progress." rows={data.jobs || []} type="Job" api={api} reload={load} />,
+    customers: <Customers data={data} api={api} reload={load} />,
+    settings: <Settings data={data} api={api} reload={load} logout={logout} theme={theme} setTheme={setTheme} />
+  };
+
+  return (
+    <Shell active={active} setActive={setActive} logout={logout}>
+      {pages[active]}
+    </Shell>
+  );
+}
+
+createRoot(document.getElementById('root')).render(<App />);
+
+
+
+// VP_DASHBOARD_LOWER_NEON_PATCH
+if (typeof window !== "undefined" && !window.__vpDashboardLowerNeonPatch) {
+  window.__vpDashboardLowerNeonPatch = true;
+
+  const vpApplyDashboardLowerNeon = () => {
+    const targets = ["Latest Insurance Claims", "Latest Customers"];
+    const nodes = Array.from(document.querySelectorAll("h1,h2,h3,h4,h5,h6,div,span"));
+
+    nodes.forEach((el) => {
+      const text = (el.textContent || "").trim();
+      if (!targets.includes(text)) return;
+
+      let current = el;
+      for (let i = 0; i < 8 && current; i += 1) {
+        current = current.parentElement;
+        if (!current) break;
+
+        const rect = current.getBoundingClientRect();
+        const childCount = current.querySelectorAll("*").length;
+
+        if (
+          rect.width > 320 &&
+          rect.height > 180 &&
+          childCount > 12
+        ) {
+          current.classList.add("vp-dashboard-neon-panel");
+          break;
+        }
+      }
+    });
+  };
+
+  const vpRun = () => {
+    requestAnimationFrame(() => {
+      setTimeout(vpApplyDashboardLowerNeon, 50);
+    });
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", vpRun);
+  } else {
+    vpRun();
+  }
+
+  window.addEventListener("load", vpRun);
+
+  const obs = new MutationObserver(() => vpRun());
+  const startObs = () => {
+    if (document.body) {
+      obs.observe(document.body, { childList: true, subtree: true });
+    }
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startObs);
+  } else {
+    startObs();
+  }
+}
+
+
+
+
+// VP_DASHBOARD_BUTTON_UI_PATCH_V1
+if (typeof window !== "undefined" && !window.__vpDashboardButtonUiPatchV1) {
+  window.__vpDashboardButtonUiPatchV1 = true;
+
+  const vpDashboardButtonMatchers = [
+    /^open claims$/i,
+    /^open customers$/i,
+    /^view all claims$/i,
+    /^view all customers$/i
+  ];
+
+  const vpApplyDashboardButtonUi = () => {
+    const nodes = Array.from(document.querySelectorAll("button, a"));
+
+    nodes.forEach((el) => {
+      const text = (el.textContent || "").trim().replace(/\s+/g, " ");
+      if (!text) return;
+
+      if (el.closest("aside, nav, [role='navigation']")) return;
+      if (!vpDashboardButtonMatchers.some((rx) => rx.test(text))) return;
+
+      el.classList.add("vp-dashboard-btn-ui");
+
+      const disabled =
+        el.hasAttribute("disabled") ||
+        el.getAttribute("aria-disabled") === "true" ||
+        el.classList.contains("disabled");
+
+      if (disabled) {
+        el.classList.add("vp-dashboard-btn-ui-disabled");
+      } else {
+        el.classList.remove("vp-dashboard-btn-ui-disabled");
+      }
+    });
+  };
+
+  const vpRunDashboardButtonUi = () => {
+    requestAnimationFrame(() => {
+      setTimeout(vpApplyDashboardButtonUi, 50);
+    });
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", vpRunDashboardButtonUi);
+  } else {
+    vpRunDashboardButtonUi();
+  }
+
+  window.addEventListener("load", vpRunDashboardButtonUi);
+
+  const vpObs = new MutationObserver(() => vpRunDashboardButtonUi());
+  const vpStartObs = () => {
+    if (document.body) {
+      vpObs.observe(document.body, { childList: true, subtree: true });
+    }
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", vpStartObs);
+  } else {
+    vpStartObs();
+  }
+}
+
+
+
+// VP_ACTIVITY_TAB_DOM_POLISH_V2
+if (typeof window !== "undefined" && !window.__vpActivityTabDomPolishV2) {
+  window.__vpActivityTabDomPolishV2 = true;
+
+  const vpText = (el) => (el?.textContent || "").trim().replace(/\s+/g, " ");
+
+  const vpFindActivityShell = () => {
+    const labels = Array.from(document.querySelectorAll("*")).filter((el) => {
+      return vpText(el).toUpperCase() === "SEARCH ACTIVITY";
+    });
+
+    for (const label of labels) {
+      let current = label;
+      for (let i = 0; i < 8 && current; i += 1) {
+        const text = vpText(current);
+        const rect = current.getBoundingClientRect();
+
+        if (
+          text.includes("Refresh Activity") &&
+          text.includes("Export Activity CSV") &&
+          rect.width > 600 &&
+          rect.height > 140
+        ) {
+          return current;
+        }
+
+        current = current.parentElement;
+      }
+    }
+
+    return null;
+  };
+
+  const vpCreateStatSvg = (type) => {
+    if (type === "task") {
+      return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    }
+
+    if (type === "booking") {
+      return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v4M16 3v4M4 10h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="4" y="5" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+    }
+
+    if (type === "system") {
+      return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 4v5c0 5-3.5 8-7 9-3.5-1-7-4-7-9V7l7-4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 12l2 2 4-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    }
+
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  };
+
+  const vpApplyActivityPolish = () => {
+    const activityHeading = Array.from(document.querySelectorAll("h1")).find((el) => {
+      return vpText(el) === "Activity";
+    });
+
+    document.body.classList.toggle("vp-activity-polish-active", Boolean(activityHeading));
+
+    if (!activityHeading) return;
+
+    const shell = vpFindActivityShell();
+    if (!shell) return;
+
+    shell.classList.add("vp-activity-shell-polished");
+
+    const searchLabel = Array.from(shell.querySelectorAll("*")).find((el) => {
+      return vpText(el).toUpperCase() === "SEARCH ACTIVITY";
+    });
+
+    if (searchLabel) {
+      let toolbar = searchLabel.parentElement;
+      for (let i = 0; i < 5 && toolbar; i += 1) {
+        const text = vpText(toolbar);
+        if (text.includes("TYPE") && text.match(/\d+\s+records/i)) {
+          toolbar.classList.add("vp-activity-filter-polished");
+          break;
+        }
+        toolbar = toolbar.parentElement;
+      }
+    }
+
+    Array.from(shell.querySelectorAll("button")).forEach((btn) => {
+      const text = vpText(btn);
+      if (/Refresh Activity|Export Activity CSV|Print Activity/i.test(text)) {
+        btn.classList.add("vp-activity-action-btn");
+      }
+    });
+
+    const countNode = Array.from(shell.querySelectorAll("*")).find((el) => {
+      return /^\d+\s+records$/i.test(vpText(el));
+    });
+
+    if (countNode) {
+      countNode.classList.add("vp-activity-record-count");
+    }
+
+    const stampNodes = Array.from(shell.querySelectorAll("*")).filter((el) => {
+      return /\d{4}-\d{2}-\d{2}T/.test(vpText(el));
+    });
+
+    const cards = [];
+
+    stampNodes.forEach((stamp) => {
+      stamp.classList.add("vp-activity-time-polished");
+
+      let current = stamp.parentElement;
+
+      for (let i = 0; i < 8 && current; i += 1) {
+        const rect = current.getBoundingClientRect();
+
+        if (
+          rect.width > 620 &&
+          rect.height >= 70 &&
+          rect.height < 180 &&
+          !current.classList.contains("vp-activity-card-polished")
+        ) {
+          current.classList.add("vp-activity-card-polished");
+
+          const allText = vpText(current).toLowerCase();
+
+          if (allText.includes("task")) current.classList.add("is-task");
+          else if (allText.includes("booking")) current.classList.add("is-booking");
+          else if (allText.includes("job")) current.classList.add("is-job");
+          else if (allText.includes("claim")) current.classList.add("is-claim");
+          else current.classList.add("is-general");
+
+          const iconBox = current.querySelector("svg")?.closest("div");
+          if (iconBox) iconBox.classList.add("vp-activity-icon-polished");
+
+          cards.push(current);
+          break;
+        }
+
+        current = current.parentElement;
+      }
+    });
+
+    const taskCount = cards.filter((card) => card.classList.contains("is-task")).length;
+    const bookingCount = cards.filter((card) => card.classList.contains("is-booking")).length;
+    const jobCount = cards.filter((card) => card.classList.contains("is-job") || card.classList.contains("is-claim")).length;
+    const total = countNode ? parseInt(vpText(countNode), 10) || cards.length : cards.length;
+
+    const headingParent = activityHeading.parentElement;
+
+    if (headingParent && !document.querySelector(".vp-activity-stats-polished")) {
+      const stats = document.createElement("section");
+      stats.className = "vp-activity-stats-polished";
+      stats.innerHTML = `
+        <article>
+          <div>${vpCreateStatSvg("total")}</div>
+          <span>Total Records</span>
+          <strong>${total}</strong>
+          <p>All workflow activity captured by the dashboard.</p>
+        </article>
+        <article>
+          <div>${vpCreateStatSvg("task")}</div>
+          <span>Task Events</span>
+          <strong>${taskCount}</strong>
+          <p>Task creation, completion and follow-up movement.</p>
+        </article>
+        <article>
+          <div>${vpCreateStatSvg("booking")}</div>
+          <span>Booking Events</span>
+          <strong>${bookingCount}</strong>
+          <p>WhatsApp bookings and manual booking changes.</p>
+        </article>
+        <article>
+          <div>${vpCreateStatSvg("system")}</div>
+          <span>Operations</span>
+          <strong>${jobCount}</strong>
+          <p>Jobs, claims and important workflow updates.</p>
+        </article>
+      `;
+
+      headingParent.insertAdjacentElement("afterend", stats);
+    } else {
+      const stats = document.querySelector(".vp-activity-stats-polished");
+      if (stats) {
+        const values = stats.querySelectorAll("strong");
+        if (values[0]) values[0].textContent = String(total);
+        if (values[1]) values[1].textContent = String(taskCount);
+        if (values[2]) values[2].textContent = String(bookingCount);
+        if (values[3]) values[3].textContent = String(jobCount);
+      }
+    }
+  };
+
+  const vpRunActivityPolish = () => {
+    requestAnimationFrame(() => {
+      setTimeout(vpApplyActivityPolish, 80);
+    });
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", vpRunActivityPolish);
+  } else {
+    vpRunActivityPolish();
+  }
+
+  window.addEventListener("load", vpRunActivityPolish);
+
+  const obs = new MutationObserver(() => vpRunActivityPolish());
+
+  const startObserver = () => {
+    if (document.body) {
+      obs.observe(document.body, { childList: true, subtree: true });
+    }
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startObserver);
+  } else {
+    startObserver();
+  }
+}
+
+
+// VP_BOOKINGS_TAB_DOM_POLISH_V1
+if (typeof window !== "undefined" && !window.__vpBookingsTabDomPolishV1) {
+  window.__vpBookingsTabDomPolishV1 = true;
+
+  const vpText = (el) => (el?.textContent || "").trim().replace(/\s+/g, " ");
+
+  const vpFindBigPanel = (seed, checks = []) => {
+    let current = seed;
+
+    for (let i = 0; i < 10 && current; i += 1) {
+      const text = vpText(current);
+      const rect = current.getBoundingClientRect();
+
+      if (
+        rect.width > 360 &&
+        rect.height > 220 &&
+        checks.every((check) => text.includes(check))
+      ) {
+        return current;
+      }
+
+      current = current.parentElement;
+    }
+
+    return null;
+  };
+
+  const vpBookingIconSvg = (type) => {
+    if (type === "photo") {
+      return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="9" r="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="m21 15-3.5-3.5a2 2 0 0 0-3 0L7 19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    }
+
+    if (type === "document") {
+      return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M14 2v6h6M8 13h8M8 17h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+    }
+
+    if (type === "note") {
+      return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>';
+    }
+
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v4M16 3v4M4 10h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="4" y="5" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+  };
+
+  const vpEnhanceSectionTitle = (titleEl, type, helper) => {
+    if (!titleEl || titleEl.dataset.vpEnhanced === "1") return;
+
+    titleEl.dataset.vpEnhanced = "1";
+    titleEl.classList.add("vp-booking-media-title");
+    titleEl.innerHTML = `
+      <span class="vp-booking-title-icon">${vpBookingIconSvg(type)}</span>
+      <span>${vpText(titleEl)}</span>
+    `;
+
+    if (helper) {
+      const small = document.createElement("small");
+      small.className = "vp-booking-section-helper";
+      small.textContent = helper;
+      titleEl.insertAdjacentElement("afterend", small);
+    }
+  };
+
+  const vpApplyBookingsPolish = () => {
+    const bookingHeading = Array.from(document.querySelectorAll("h1")).find((el) => {
+      return vpText(el) === "Bookings";
+    });
+
+    document.body.classList.toggle("vp-bookings-polish-active", Boolean(bookingHeading));
+
+    if (!bookingHeading) return;
+
+    const createBtn = Array.from(document.querySelectorAll("button, a")).find((el) => {
+      return /Create Booking/i.test(vpText(el));
+    });
+
+    const exportBtn = Array.from(document.querySelectorAll("button, a")).find((el) => {
+      return /Export CSV/i.test(vpText(el));
+    });
+
+    if (createBtn) {
+      createBtn.classList.add("vp-booking-main-button");
+    }
+
+    if (exportBtn) {
+      exportBtn.classList.add("vp-booking-soft-button");
+    }
+
+    const listPanel = createBtn ? vpFindBigPanel(createBtn, ["Bookings", "Search", "Status"]) : null;
+
+    if (listPanel) {
+      listPanel.classList.add("vp-booking-list-panel");
+    }
+
+    const bookingLabel = Array.from(document.querySelectorAll("*")).find((el) => {
+      return vpText(el).toUpperCase() === "BOOKING";
+    });
+
+    const detailPanel = bookingLabel ? vpFindBigPanel(bookingLabel, ["Customer", "Phone", "Vehicle", "Registration"]) : null;
+
+    if (detailPanel) {
+      detailPanel.classList.add("vp-booking-detail-panel");
+    }
+
+    Array.from(document.querySelectorAll("input, select")).forEach((el) => {
+      if (el.closest(".vp-booking-list-panel")) {
+        el.classList.add("vp-booking-input");
+      }
+    });
+
+    Array.from(document.querySelectorAll("*")).forEach((el) => {
+      const text = vpText(el);
+
+      if (/^\d+\s+bookings$/i.test(text)) {
+        el.classList.add("vp-booking-count-pill");
+      }
+
+      if (/^(Pending|New|Quote Stage|In Progress|Completed|Closed)$/i.test(text)) {
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 160 && rect.height < 80) {
+          el.classList.add("vp-booking-status-pill");
+        }
+      }
+    });
+
+    if (listPanel) {
+      Array.from(listPanel.querySelectorAll("button, article, div")).forEach((el) => {
+        const text = vpText(el);
+        const rect = el.getBoundingClientRect();
+
+        if (
+          /JC-\d+/i.test(text) &&
+          rect.width > 260 &&
+          rect.height > 52 &&
+          rect.height < 140
+        ) {
+          el.classList.add("vp-booking-row-card");
+        }
+      });
+    }
+
+    if (detailPanel) {
+      Array.from(detailPanel.querySelectorAll("div, article, section")).forEach((el) => {
+        const text = vpText(el);
+        const rect = el.getBoundingClientRect();
+
+        if (
+          rect.width > 170 &&
+          rect.height > 52 &&
+          rect.height < 95 &&
+          /Customer|Phone|Vehicle|Registration|Service|Location|Booking Date|Booking Time|Priority|Quote Amount|Fitter|Invoice/.test(text)
+        ) {
+          el.classList.add("vp-booking-info-tile");
+        }
+      });
+    }
+
+    const photosTitle = Array.from(document.querySelectorAll("*")).find((el) => vpText(el) === "Customer Photos");
+    const docsTitle = Array.from(document.querySelectorAll("*")).find((el) => vpText(el) === "Customer Documents");
+    const notesTitle = Array.from(document.querySelectorAll("*")).find((el) => vpText(el) === "Customer Notes");
+
+    vpEnhanceSectionTitle(photosTitle, "photo", "Vehicle images and damage photos uploaded from WhatsApp will appear here.");
+    vpEnhanceSectionTitle(docsTitle, "document", "PDFs, registration images and customer files are grouped here.");
+    vpEnhanceSectionTitle(notesTitle, "note", "Internal notes and customer context for this booking.");
+
+    [
+      [photosTitle, "vp-booking-photos-section"],
+      [docsTitle, "vp-booking-documents-section"],
+      [notesTitle, "vp-booking-notes-section"]
+    ].forEach(([title, className]) => {
+      if (!title) return;
+
+      let current = title.parentElement;
+
+      for (let i = 0; i < 6 && current; i += 1) {
+        const rect = current.getBoundingClientRect();
+
+        if (rect.width > 120 && rect.height > 80) {
+          current.classList.add(className);
+          current.classList.add("vp-booking-media-box");
+          break;
+        }
+
+        current = current.parentElement;
+      }
+    });
+
+    Array.from(document.querySelectorAll("img")).forEach((img) => {
+      if (img.closest(".vp-booking-detail-panel")) {
+        img.classList.add("vp-booking-photo-img");
+      }
+    });
+
+    Array.from(document.querySelectorAll("a, button, div")).forEach((el) => {
+      const text = vpText(el);
+      const rect = el.getBoundingClientRect();
+
+      if (
+        el.closest(".vp-booking-documents-section") &&
+        /\.(pdf|jpg|jpeg|png|webp)$/i.test(text) &&
+        rect.height > 24
+      ) {
+        el.classList.add("vp-booking-doc-row");
+      }
+    });
+
+    Array.from(document.querySelectorAll("button, a")).forEach((el) => {
+      const text = vpText(el);
+
+      if (/Proceed|Add Note|View all|Download|Print|Send|Record Payment|Add Part|Create Booking|Export CSV/i.test(text)) {
+        if (!el.closest("aside, nav, [role='navigation']")) {
+          el.classList.add("vp-booking-action-button");
+        }
+      }
+    });
+  };
+
+  const vpRunBookingsPolish = () => {
+    requestAnimationFrame(() => {
+      setTimeout(vpApplyBookingsPolish, 80);
+    });
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", vpRunBookingsPolish);
+  } else {
+    vpRunBookingsPolish();
+  }
+
+  window.addEventListener("load", vpRunBookingsPolish);
+
+  const obs = new MutationObserver(() => vpRunBookingsPolish());
+
+  const startObserver = () => {
+    if (document.body) {
+      obs.observe(document.body, { childList: true, subtree: true });
+    }
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startObserver);
+  } else {
+    startObserver();
+  }
+}
+
+
+// VP_BOOKING_STATUS_NEO_BRUTALISM_CLASS_PATCH
+if (typeof window !== "undefined" && !window.__vpBookingStatusNeoBrutalismPatch) {
+  window.__vpBookingStatusNeoBrutalismPatch = true;
+
+  const runStatusPatch = () => {
+    if (!document.body.classList.contains("vp-bookings-polish-active")) return;
+
+    Array.from(document.querySelectorAll("*")).forEach((el) => {
+      const text = (el.textContent || "").trim().replace(/\s+/g, " ").toLowerCase();
+      const rect = el.getBoundingClientRect();
+
+      if (rect.width > 130 || rect.height > 80) return;
+
+      el.classList.remove(
+        "vp-status-quote-stage",
+        "vp-status-in-progress",
+        "vp-status-completed",
+        "vp-status-closed"
+      );
+
+      if (text === "quote stage") el.classList.add("vp-status-quote-stage");
+      if (text === "in progress") el.classList.add("vp-status-in-progress");
+      if (text === "completed") el.classList.add("vp-status-completed");
+      if (text === "closed") el.classList.add("vp-status-closed");
+    });
+  };
+
+  const scheduleStatusPatch = () => {
+    requestAnimationFrame(() => setTimeout(runStatusPatch, 80));
+  };
+
+  window.addEventListener("load", scheduleStatusPatch);
+  document.addEventListener("click", scheduleStatusPatch);
+
+  const obs = new MutationObserver(scheduleStatusPatch);
+
+  const start = () => {
+    if (document.body) obs.observe(document.body, { childList: true, subtree: true });
+    scheduleStatusPatch();
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", start);
+  } else {
+    start();
+  }
+}
+
+
+// VP_CLAIMS_TAB_DOM_POLISH_V1
+if (typeof window !== "undefined" && !window.__vpClaimsTabDomPolishV1) {
+  window.__vpClaimsTabDomPolishV1 = true;
+
+  const vpText = (el) => (el?.textContent || "").trim().replace(/\s+/g, " ");
+
+  const vpFindPanel = (seed, checks = []) => {
+    let current = seed;
+
+    for (let i = 0; i < 10 && current; i += 1) {
+      const text = vpText(current);
+      const rect = current.getBoundingClientRect();
+
+      if (
+        rect.width > 300 &&
+        rect.height > 180 &&
+        checks.every((check) => text.includes(check))
+      ) {
+        return current;
+      }
+
+      current = current.parentElement;
+    }
+
+    return null;
+  };
+
+  const vpApplyClaimsPolish = () => {
+    const heading = Array.from(document.querySelectorAll("h1")).find((el) => {
+      return vpText(el) === "Insurance Claims";
+    });
+
+    document.body.classList.toggle("vp-claims-polish-active", Boolean(heading));
+
+    if (!heading) return;
+
+    const exportBtn = Array.from(document.querySelectorAll("button, a")).find((el) => {
+      return /Export CSV/i.test(vpText(el));
+    });
+
+    const claimsTitle = Array.from(document.querySelectorAll("*")).find((el) => {
+      return vpText(el) === "Claims";
+    });
+
+    const emptyFound = Array.from(document.querySelectorAll("*")).find((el) => {
+      return /No insurance claims found/i.test(vpText(el));
+    });
+
+    const listPanel = claimsTitle ? vpFindPanel(claimsTitle, ["Claims", "Search", "Status"]) : null;
+    const detailPanel = emptyFound ? vpFindPanel(emptyFound, ["No insurance claims found"]) : null;
+
+    if (listPanel) listPanel.classList.add("vp-claims-list-panel");
+    if (detailPanel) detailPanel.classList.add("vp-claims-detail-panel");
+
+    if (exportBtn) exportBtn.classList.add("vp-claims-action-button");
+
+    Array.from(document.querySelectorAll("input, select")).forEach((el) => {
+      if (el.closest(".vp-claims-list-panel")) {
+        el.classList.add("vp-claims-input");
+      }
+    });
+
+    Array.from(document.querySelectorAll("*")).forEach((el) => {
+      const text = vpText(el);
+      const rect = el.getBoundingClientRect();
+
+      if (/^\d+\s+claims$/i.test(text)) {
+        el.classList.add("vp-claims-count-pill");
+      }
+
+      if (
+        /^(Pending|Approved|Submitted|Declined|In Review|Completed|Stable)$/i.test(text) &&
+        rect.width < 150 &&
+        rect.height < 80
+      ) {
+        el.classList.add("vp-claims-status-pill");
+      }
+
+      if (
+        /No records yet|No insurance claims found|New records from the WhatsApp automation|Try changing the search/i.test(text)
+      ) {
+        let current = el.parentElement;
+
+        for (let i = 0; i < 6 && current; i += 1) {
+          const box = current.getBoundingClientRect();
+
+          if (box.width > 240 && box.height > 70) {
+            current.classList.add("vp-claims-empty-state");
+            break;
+          }
+
+          current = current.parentElement;
+        }
+      }
+    });
+
+    if (listPanel) {
+      Array.from(listPanel.querySelectorAll("button, article, div")).forEach((el) => {
+        const text = vpText(el);
+        const rect = el.getBoundingClientRect();
+
+        if (
+          /CL-|Claim|Customer|Vehicle/i.test(text) &&
+          rect.width > 260 &&
+          rect.height > 50 &&
+          rect.height < 150
+        ) {
+          el.classList.add("vp-claims-row-card");
+        }
+      });
+    }
+  };
+
+  const vpRunClaimsPolish = () => {
+    requestAnimationFrame(() => {
+      setTimeout(vpApplyClaimsPolish, 80);
+    });
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", vpRunClaimsPolish);
+  } else {
+    vpRunClaimsPolish();
+  }
+
+  window.addEventListener("load", vpRunClaimsPolish);
+  document.addEventListener("click", vpRunClaimsPolish);
+
+  const obs = new MutationObserver(() => vpRunClaimsPolish());
+
+  const startObserver = () => {
+    if (document.body) {
+      obs.observe(document.body, { childList: true, subtree: true });
+    }
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startObserver);
+  } else {
+    startObserver();
+  }
+}
+
+
+// VP_FORCE_CLAIMS_PAGE_POLISH_V2
+if (typeof window !== "undefined" && !window.__vpForceClaimsPagePolishV2) {
+  window.__vpForceClaimsPagePolishV2 = true;
+
+  const cleanText = (el) => (el?.textContent || "").trim().replace(/\s+/g, " ");
+
+  const addFonts = () => {
+    if (document.getElementById("vp-font-polish-link")) return;
+
+    const link = document.createElement("link");
+    link.id = "vp-font-polish-link";
+    link.rel = "stylesheet";
+    link.href = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&family=Sora:wght@600;700;800&display=swap";
+    document.head.appendChild(link);
+  };
+
+  const findPanelFromText = (textNeedle, minW = 300, minH = 140) => {
+    const node = Array.from(document.querySelectorAll("*")).find((el) => cleanText(el) === textNeedle);
+    if (!node) return null;
+
+    let current = node;
+
+    for (let i = 0; i < 12 && current; i += 1) {
+      const rect = current.getBoundingClientRect();
+
+      if (rect.width > minW && rect.height > minH) {
+        return current;
+      }
+
+      current = current.parentElement;
+    }
+
+    return null;
+  };
+
+  const findPanelContaining = (needle, minW = 300, minH = 140) => {
+    const node = Array.from(document.querySelectorAll("*")).find((el) => cleanText(el).includes(needle));
+    if (!node) return null;
+
+    let current = node;
+
+    for (let i = 0; i < 12 && current; i += 1) {
+      const rect = current.getBoundingClientRect();
+
+      if (rect.width > minW && rect.height > minH) {
+        return current;
+      }
+
+      current = current.parentElement;
+    }
+
+    return null;
+  };
+
+  const applyClaimsPolish = () => {
+    addFonts();
+
+    const title = Array.from(document.querySelectorAll("h1")).find((el) => cleanText(el) === "Insurance Claims");
+    const isClaims = Boolean(title);
+
+    document.body.classList.toggle("vp-force-claims-active", isClaims);
+
+    if (!isClaims) return;
+
+    title.classList.add("vp-force-claims-title");
+
+    if (title.nextElementSibling) {
+      title.nextElementSibling.classList.add("vp-force-claims-subtitle");
+    }
+
+    const claimsListPanel = findPanelFromText("Claims", 360, 300);
+    if (claimsListPanel) claimsListPanel.classList.add("vp-force-claims-panel", "vp-force-claims-list");
+
+    const detailEmptyPanel = findPanelContaining("No insurance claims found", 360, 250);
+    if (detailEmptyPanel) detailEmptyPanel.classList.add("vp-force-claims-panel", "vp-force-claims-detail");
+
+    const noRecordsPanel = findPanelContaining("No records yet", 260, 120);
+    if (noRecordsPanel) noRecordsPanel.classList.add("vp-force-claims-empty-box");
+
+    const noClaimsPanel = findPanelContaining("No insurance claims found", 260, 120);
+    if (noClaimsPanel) noClaimsPanel.classList.add("vp-force-claims-empty-box");
+
+    Array.from(document.querySelectorAll("input, select")).forEach((el) => {
+      const rect = el.getBoundingClientRect();
+      if (rect.width > 80 && rect.height > 25) {
+        if (el.closest(".vp-force-claims-panel")) el.classList.add("vp-force-claims-control");
+      }
+    });
+
+    Array.from(document.querySelectorAll("button, a")).forEach((el) => {
+      const text = cleanText(el);
+
+      if (/Export CSV|Open Claims|View all claims|Submit|Download|Print|Approve|Decline/i.test(text)) {
+        if (!el.closest("aside, nav, [role='navigation']")) {
+          el.classList.add("vp-force-claims-button");
+        }
+      }
+    });
+
+    Array.from(document.querySelectorAll("*")).forEach((el) => {
+      const text = cleanText(el);
+      const rect = el.getBoundingClientRect();
+
+      if (/^\d+\s+claims$/i.test(text) && rect.width < 180) {
+        el.classList.add("vp-force-claims-count");
+      }
+
+      if (/^(Pending|Stable|Approved|Submitted|Declined|In Review|Completed)$/i.test(text) && rect.width < 160 && rect.height < 90) {
+        el.classList.add("vp-force-claims-status");
+      }
+    });
+  };
+
+  const run = () => requestAnimationFrame(() => setTimeout(applyClaimsPolish, 80));
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", run);
+  } else {
+    run();
+  }
+
+  window.addEventListener("load", run);
+  document.addEventListener("click", run);
+
+  setInterval(run, 700);
+
+  const observer = new MutationObserver(run);
+  const startObserver = () => {
+    if (document.body) {
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startObserver);
+  } else {
+    startObserver();
+  }
+}
+
+
+// VP_CLAIMS_FINAL_FORCE_V3
+if (typeof window !== "undefined" && !window.__vpClaimsFinalForceV3) {
+  window.__vpClaimsFinalForceV3 = true;
+
+  const txt = (el) => (el?.textContent || "").trim().replace(/\s+/g, " ");
+
+  const addFontLink = () => {
+    if (document.getElementById("vp-claims-fonts-v3")) return;
+
+    const link = document.createElement("link");
+    link.id = "vp-claims-fonts-v3";
+    link.rel = "stylesheet";
+    link.href = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&family=Sora:wght@600;700;800&display=swap";
+    document.head.appendChild(link);
+  };
+
+  const smallestPanel = (items) => {
+    return items
+      .map((el) => ({ el, r: el.getBoundingClientRect() }))
+      .filter(({ r }) => r.width > 360 && r.height > 220 && r.left > 250)
+      .sort((a, b) => (a.r.width * a.r.height) - (b.r.width * b.r.height))[0]?.el || null;
+  };
+
+  const apply = () => {
+    addFontLink();
+
+    const title = Array.from(document.querySelectorAll("h1")).find((el) => txt(el) === "Insurance Claims");
+    const isClaims = Boolean(title);
+
+    document.body.classList.toggle("vp-claims-final-page", isClaims);
+
+    if (!isClaims) return;
+
+    title.classList.add("vp-claims-final-title");
+    if (title.nextElementSibling) title.nextElementSibling.classList.add("vp-claims-final-subtitle");
+
+    const all = Array.from(document.querySelectorAll("div, section, article, main"));
+
+    const leftPanel = smallestPanel(all.filter((el) => {
+      const t = txt(el);
+      return t.includes("Claims") && t.includes("Search") && t.includes("Export CSV");
+    }));
+
+    const rightPanel = smallestPanel(all.filter((el) => {
+      return txt(el).includes("No insurance claims found");
+    }));
+
+    if (leftPanel) leftPanel.classList.add("vp-claims-final-panel", "vp-claims-final-left");
+    if (rightPanel) rightPanel.classList.add("vp-claims-final-panel", "vp-claims-final-right");
+
+    document.querySelectorAll(".vp-claims-final-panel input, .vp-claims-final-panel select").forEach((el) => {
+      el.classList.add("vp-claims-final-control");
+    });
+
+    document.querySelectorAll(".vp-claims-final-panel button, .vp-claims-final-panel a").forEach((el) => {
+      const t = txt(el);
+
+      if (/Export CSV|Open|Download|Submit|Approve|Decline|Print|Verify|Send|View/i.test(t)) {
+        el.classList.add("vp-claims-final-button");
+      }
+    });
+
+    all.forEach((el) => {
+      const t = txt(el);
+      const r = el.getBoundingClientRect();
+
+      if (/^\d+\s+claims$/i.test(t) && r.width < 180 && r.height < 70) {
+        el.classList.add("vp-claims-final-count");
+      }
+
+      if (
+        /No records yet|No insurance claims found|New records from the WhatsApp automation|Try changing the search/i.test(t) &&
+        r.width > 260 &&
+        r.height > 80 &&
+        r.left > 250
+      ) {
+        el.classList.add("vp-claims-final-empty");
+      }
+
+      if (
+        /^(Pending|Stable|Approved|Submitted|Declined|In Review|Completed)$/i.test(t) &&
+        r.width < 160 &&
+        r.height < 80
+      ) {
+        el.classList.add("vp-claims-final-status");
+      }
+    });
+  };
+
+  const run = () => requestAnimationFrame(() => setTimeout(apply, 100));
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", run);
+  } else {
+    run();
+  }
+
+  window.addEventListener("load", run);
+  window.addEventListener("resize", run);
+  document.addEventListener("click", run);
+
+  setInterval(run, 600);
+
+  const observer = new MutationObserver(run);
+  const start = () => {
+    if (document.body) observer.observe(document.body, { childList: true, subtree: true });
+    run();
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", start);
+  } else {
+    start();
+  }
+}

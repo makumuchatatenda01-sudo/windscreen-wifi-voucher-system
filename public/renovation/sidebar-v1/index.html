@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
+<title>Windscreen Dashboard — Sidebar Preview</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Sora:wght@500;600;700;800&display=swap');
+
+:root{
+  --ink:#0b1739;
+  --text:#33445f;
+  --muted:#7b879a;
+  --label:#9aa5b6;
+  --blue:#1769e0;
+  --blue-deep:#0e59c7;
+  --blue-soft:#eef5ff;
+  --line:#e7ecf2;
+  --green:#16b673;
+  --red:#aa434d;
+  --sidebar:#ffffff;
+  --page:#f7f9fc;
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden}
+body{
+  font-family:"Manrope",Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:var(--page);
+  color:var(--ink);
+}
+
+.page{width:100vw;height:100vh;position:relative;background:var(--page)}
+.sidebar{
+  position:absolute;
+  inset:0 auto 0 0;
+  width:292px;
+  height:100vh;
+  display:grid;
+  grid-template-rows:auto auto minmax(0,1fr) auto;
+  overflow:hidden;
+  background:
+    linear-gradient(180deg,rgba(247,250,255,.96) 0,rgba(255,255,255,1) 18%,#fff 100%);
+  border-right:1px solid #e5ebf2;
+  box-shadow:8px 0 28px rgba(24,47,78,.045);
+}
+.blank-area{position:absolute;left:292px;right:0;top:0;bottom:0;background:var(--page)}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap:13px;
+  min-height:92px;
+  margin:0 18px;
+  padding:19px 5px 16px;
+  border-bottom:1px solid var(--line);
+}
+.logo{
+  width:76px;
+  height:46px;
+  object-fit:contain;
+  flex:0 0 auto;
+  filter:drop-shadow(0 3px 7px rgba(20,80,160,.08));
+}
+.brand-copy{min-width:0;line-height:1.05}
+.brand-title{
+  font-family:"Sora",sans-serif;
+  font-size:20px;
+  font-weight:800;
+  letter-spacing:-.75px;
+  color:#091534;
+}
+.brand-subtitle{
+  margin-top:5px;
+  font-size:13px;
+  font-weight:650;
+  color:#7d889a;
+  letter-spacing:-.1px;
+}
+
+.profile-wrap{padding:18px 17px 8px}
+.profile{
+  position:relative;
+  height:80px;
+  display:flex;
+  align-items:center;
+  gap:13px;
+  padding:12px 13px;
+  border:1px solid #dfe8f3;
+  border-radius:16px;
+  background:linear-gradient(145deg,#f8fbff 0%,#f3f8ff 100%);
+  box-shadow:0 8px 20px rgba(45,79,120,.055), inset 0 1px 0 rgba(255,255,255,.95);
+}
+.profile:after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:16px;
+  pointer-events:none;
+  background:linear-gradient(120deg,rgba(255,255,255,.5),transparent 45%);
+}
+.avatar{
+  width:52px;
+  height:52px;
+  border-radius:14px;
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+  background:linear-gradient(145deg,#1b74ef,#0c5fd4);
+  color:#fff;
+  font-family:"Sora",sans-serif;
+  font-size:17px;
+  font-weight:800;
+  box-shadow:0 9px 17px rgba(23,105,224,.2);
+}
+.profile-name{
+  font-family:"Sora",sans-serif;
+  font-size:15px;
+  font-weight:750;
+  letter-spacing:-.35px;
+  color:#0b1739;
+}
+.profile-role{
+  margin-top:5px;
+  font-size:10px;
+  font-weight:650;
+  letter-spacing:.05px;
+  color:#7b879a;
+}
+
+.nav-shell{min-height:0;padding-top:2px}
+.nav-scroll{
+  height:100%;
+  overflow-y:auto;
+  overflow-x:hidden;
+  padding:0 14px 18px 20px;
+  scrollbar-width:thin;
+  scrollbar-color:#aab5c6 transparent;
+}
+.nav-scroll::-webkit-scrollbar{width:6px}
+.nav-scroll::-webkit-scrollbar-track{background:transparent}
+.nav-scroll::-webkit-scrollbar-thumb{background:#aab5c6;border-radius:99px}
+.group{margin-top:20px}
+.group:first-child{margin-top:12px}
+.section-label{
+  margin:0 0 10px 7px;
+  font-family:"Sora",sans-serif;
+  font-size:9px;
+  line-height:1;
+  font-weight:700;
+  letter-spacing:1.7px;
+  color:var(--label);
+}
+.nav-item{
+  position:relative;
+  min-height:48px;
+  margin:3px 0;
+  padding:0 11px;
+  border:1px solid transparent;
+  border-radius:13px;
+  display:grid;
+  grid-template-columns:31px minmax(0,1fr) 14px;
+  align-items:center;
+  column-gap:9px;
+  text-decoration:none;
+  color:#58677e;
+  font-size:12.5px;
+  font-weight:650;
+  letter-spacing:-.08px;
+  transition:background .16s ease,border-color .16s ease,color .16s ease,transform .16s ease;
+}
+.nav-item:hover{
+  color:#243653;
+  background:#f7f9fc;
+  border-color:#eef2f6;
+  transform:translateX(1px);
+}
+.nav-item svg{
+  width:19px;
+  height:19px;
+  justify-self:center;
+  fill:none;
+  stroke:#64748b;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.nav-item.active{
+  min-height:56px;
+  margin-bottom:15px;
+  padding-left:12px;
+  border-color:#dce9fb;
+  border-radius:14px;
+  color:#0f5fc8;
+  font-weight:800;
+  background:linear-gradient(90deg,#eef6ff 0%,#e8f2ff 72%,#edf6ff 100%);
+  box-shadow:0 8px 18px rgba(23,105,224,.07),inset 0 1px 0 rgba(255,255,255,.85);
+}
+.nav-item.active:before{
+  content:"";
+  position:absolute;
+  left:-7px;
+  top:8px;
+  bottom:8px;
+  width:4px;
+  border-radius:0 99px 99px 0;
+  background:linear-gradient(180deg,#2580f2,#0f5fc8);
+}
+.nav-item.active svg{stroke:#146ce8;stroke-width:2}
+.nav-item.active .icon-tile{background:rgba(23,105,224,.08)}
+.icon-tile{
+  width:30px;
+  height:30px;
+  border-radius:9px;
+  display:grid;
+  place-items:center;
+  background:#f5f7fa;
+  border:1px solid #edf1f5;
+}
+.chev{
+  font-family:"Sora",sans-serif;
+  font-size:22px;
+  font-weight:500;
+  line-height:1;
+  color:#2678e7;
+  transform:translateY(-1px);
+}
+
+.footer{padding:0 17px 14px;background:#fff}
+.footer:before{content:"";display:block;border-top:1px solid var(--line);margin-bottom:11px}
+.status{
+  min-height:56px;
+  border:1px solid #e4f2eb;
+  border-radius:14px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:9px 10px;
+  margin-bottom:7px;
+  background:linear-gradient(135deg,#effaf5,#f7fcfa);
+}
+.status-ring{
+  width:31px;
+  height:31px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  background:#ddf5e8;
+  flex:0 0 auto;
+  box-shadow:inset 0 0 0 1px rgba(22,182,115,.06);
+}
+.status-dot{
+  width:12px;
+  height:12px;
+  border-radius:50%;
+  background:var(--green);
+  box-shadow:0 0 0 4px rgba(22,182,115,.08);
+}
+.status-title{
+  font-family:"Sora",sans-serif;
+  font-size:10.5px;
+  font-weight:750;
+  color:#0b1737;
+  line-height:1.05;
+}
+.status-subtitle{
+  margin-top:3px;
+  font-size:8.5px;
+  font-weight:650;
+  color:#7b879a;
+  line-height:1.05;
+}
+.signout{
+  height:40px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:0 8px;
+  border-radius:10px;
+  color:var(--red);
+  text-decoration:none;
+  font-family:"Sora",sans-serif;
+  font-size:11px;
+  font-weight:650;
+}
+.signout:hover{background:#fff5f6}
+.signout svg{
+  width:19px;
+  height:19px;
+  fill:none;
+  stroke:var(--red);
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+@media(max-width:600px){
+  .sidebar{width:260px}
+  .blank-area{left:260px}
+}
+</style>
+</head>
+<body>
+<div class="page">
+  <aside class="sidebar" aria-label="Workshop navigation preview">
+    <header class="brand">
+      <img class="logo" src="/files/branding/windscreen-fitment-centre-logo.png" alt="Windscreen Fitment Centre" />
+      <div class="brand-copy">
+        <div class="brand-title">Windscreen</div>
+        <div class="brand-subtitle">Fitment Centre</div>
+      </div>
+    </header>
+
+    <div class="profile-wrap">
+      <div class="profile">
+        <div class="avatar">WF</div>
+        <div>
+          <div class="profile-name">Administrator</div>
+          <div class="profile-role">Workshop Operations</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-shell">
+      <nav class="nav-scroll">
+        <section class="group">
+          <h2 class="section-label">OVERVIEW</h2>
+          <a class="nav-item active" href="#">
+            <span class="icon-tile"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></span>
+            <span>Dashboard</span><span class="chev">›</span>
+          </a>
+        </section>
+
+        <section class="group">
+          <h2 class="section-label">OPERATIONS</h2>
+          <a class="nav-item" href="#"><span class="icon-tile"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/><path d="m9 15 2 2 4-4"/></svg></span><span>Bookings</span><span></span></a>
+          <a class="nav-item" href="#"><span class="icon-tile"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2h6v2M9 9h6M9 13h6M9 17h4"/></svg></span><span>External Job Cards</span><span></span></a>
+          <a class="nav-item" href="#"><span class="icon-tile"><svg viewBox="0 0 24 24"><path d="M12 3 19 6v5c0 5-3.5 8-7 10-3.5-2-7-5-7-10V6l7-3Z"/><path d="m9.5 12 1.7 1.7 3.6-3.6"/></svg></span><span>Insurance Claims</span><span></span></a>
+          <a class="nav-item" href="#"><span class="icon-tile"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5c0-1 1-2 2-2h2c1 0 2 1 2 2v2M3 12h18M10 12v2h4v-2"/></svg></span><span>Jobs</span><span></span></a>
+        </section>
+
+        <section class="group">
+          <h2 class="section-label">SALES &amp; STOCK</h2>
+          <a class="nav-item" href="#"><span class="icon-tile"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2h6v2M9 9h6M9 13h6M9 17h6"/></svg></span><span>Stock Catalogue</span><span></span></a>
+          <a class="nav-item" href="#"><span class="icon-tile"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span><span>Customers</span><span></span></a>
+        </section>
+
+        <section class="group">
+          <h2 class="section-label">MANAGEMENT</h2>
+          <a class="nav-item" href="#"><span class="icon-tile"><svg viewBox="0 0 24 24"><path d="M3 11 12 4l9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9Z"/></svg></span><span>Activity</span><span></span></a>
+        </section>
+      </nav>
+    </div>
+
+    <footer class="footer">
+      <div class="status">
+        <div class="status-ring"><span class="status-dot"></span></div>
+        <div><div class="status-title">System online</div><div class="status-subtitle">WhatsApp automation</div></div>
+      </div>
+      <a href="#" class="signout"><svg viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3"/><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/></svg><span>Sign out</span></a>
+    </footer>
+  </aside>
+  <main class="blank-area" aria-label="Blank dashboard preview area"></main>
+</div>
+</body>
+</html>
